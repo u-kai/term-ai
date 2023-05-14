@@ -1,10 +1,10 @@
 use clap::{Parser, Subcommand};
-use reqwest::Client;
+use term_ai::gpt::GptClient;
 
 #[tokio::main]
 async fn main() {
-    let cli = Cli::parse();
-    let client = Client::new();
+    let gpt = GptClient::from_env().unwrap();
+    gpt.chat("Hello, World!").await.unwrap();
 }
 
 #[derive(Parser)]
