@@ -22,9 +22,10 @@ impl GptClient {
     pub async fn chat(&self, message: impl Into<String>) -> Result<()> {
         let url = "https://api.openai.com/v1/chat/completions";
         let body = self.make_chat_body(message)?;
+        println!("send request ...");
         let response = self.post(url, body).await?;
         let res_message = self.response_text(response).await?;
-        println!("res : {}", res_message);
+        println!("response : {}", res_message);
         Ok(())
     }
     async fn response_text(&self, response: Response) -> Result<String> {
@@ -33,7 +34,7 @@ impl GptClient {
                 let response = serde_json::from_str::<ChatResponse>(&response);
                 match response {
                     Ok(response) => {
-                        let Some(Some(Some(Some(res_message)))) = response.choices.map(|mut c|c.pop().map(|c|c.message.map(|m|m.content))) else {
+                        let Some(res_message) = response.last_response() else {
                             return Err(GptClientError {
                                 message: "Cause Error at GptClient::response_text".to_string(),
                                 kind: GptClientErrorKind::NotFoundResponseContent,
@@ -183,6 +184,11 @@ pub struct ChatResponse {
     pub id: Option<String>,
     pub object: Option<String>,
     pub usage: Option<ChatResponseUsage>,
+}
+impl ChatResponse {
+    fn last_response(self) -> Option<String> {
+        self.choices?.pop()?.message?.content
+    }
 }
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct ChatResponseChoices {
