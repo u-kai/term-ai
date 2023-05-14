@@ -68,14 +68,16 @@ pub struct Message {
     role: Role,
     content: String,
 }
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, PartialEq, Eq)]
 pub enum Role {
     User,
+    Assistant,
 }
-impl Into<&'static str> for Role {
-    fn into(self) -> &'static str {
+impl Role {
+    fn into_str(&self) -> &'static str {
         match self {
             Self::User => "user",
+            Self::Assistant => "assistant",
         }
     }
 }
@@ -84,9 +86,7 @@ impl serde::Serialize for Role {
     where
         S: serde::Serializer,
     {
-        let role = match self {
-            Self::User => "user",
-        };
+        let role: &str = self.into_str();
         serializer.serialize_str(role)
     }
 }
@@ -99,18 +99,20 @@ impl serde::Serialize for OpenAIModel {
     where
         S: serde::ser::Serializer,
     {
-        let model = match self {
-            Self::Gpt3Dot5Turbo => "gpt-3.5-turbo",
-        };
-        serializer.serialize_str(model)
+        serializer.serialize_str(self.into_str())
     }
 }
 
-impl Into<&'static str> for OpenAIModel {
-    fn into(self) -> &'static str {
+impl OpenAIModel {
+    pub fn into_str(&self) -> &'static str {
         match self {
             Self::Gpt3Dot5Turbo => "gpt-3.5-turbo",
         }
+    }
+}
+impl Into<&'static str> for OpenAIModel {
+    fn into(self) -> &'static str {
+        self.into_str()
     }
 }
 #[derive(Debug)]
@@ -142,3 +144,80 @@ impl Display for GptClientErrorKind {
 }
 impl std::error::Error for GptClientError {}
 pub type Result<T> = std::result::Result<T, GptClientError>;
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct ChatResponse {
+    pub choices: Option<Vec<ChatResponseChoices>>,
+    pub created: Option<usize>,
+    pub id: Option<String>,
+    pub object: Option<String>,
+    pub usage: Option<ChatResponseUsage>,
+}
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct ChatResponseChoices {
+    pub finish_reason: Option<String>,
+    pub index: Option<usize>,
+    pub message: Option<ChatResponseChoicesMessage>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct ChatResponseChoicesMessage {
+    pub content: Option<String>,
+    pub role: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct ChatResponseUsage {
+    pub completion_tokens: Option<usize>,
+    pub prompt_tokens: Option<usize>,
+    pub total_tokens: Option<usize>,
+}
+
+#[derive(Debug)]
+struct ChatFactory {
+    stack: Vec<Message>,
+}
+
+impl ChatFactory {
+    fn new() -> Self {
+        Self { stack: Vec::new() }
+    }
+
+    fn make_request(&self) -> ChatRequest {
+        ChatRequest {
+            model: OpenAIModel::Gpt3Dot5Turbo,
+            messages: self.stack.clone(),
+        }
+    }
+    fn push_response(&mut self, message: impl Into<String>) {
+        self.stack.push(Message {
+            role: Role::Assistant,
+            content: message.into(),
+        });
+    }
+    fn push_request(&mut self, message: impl Into<String>) {
+        self.stack.push(Message {
+            role: Role::User,
+            content: message.into(),
+        });
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn chatの結果を保存してリクエストを作成する() {
+        let mut sut = ChatFactory::new();
+        sut.push_request("hello world");
+        let request = sut.make_request();
+        assert_eq!(request.messages[0].content, "hello world");
+        assert_eq!(request.messages[0].role, Role::User);
+        sut.push_response("hello world! have a nice day");
+        sut.push_request("what?");
+        let request = sut.make_request();
+        assert_eq!(request.messages[0].content, "hello world");
+        assert_eq!(request.messages[1].content, "hello world! have a nice day");
+        assert_eq!(request.messages[1].role, Role::Assistant);
+        assert_eq!(request.messages[2].content, "what?");
+        assert_eq!(request.messages[2].role, Role::User);
+    }
+}
