@@ -1,9 +1,10 @@
-use std::io::Write;
+use std::{io::Write, thread::panicking};
 
 use term_ai::gpt::GptClient;
 
 fn main() {
     let mut gpt = GptClient::from_env().unwrap();
+    let mut err_num = 0;
     loop {
         let mut message = String::new();
         print!("{} > ", std::env::var("USER").unwrap_or_default());
@@ -11,12 +12,25 @@ fn main() {
         std::io::stdin().read_line(&mut message).unwrap();
         print!("gpt > ");
         std::io::stdout().flush().unwrap();
-        gpt.stream_chat(message, |res| {
+        match gpt.stream_chat(&message, |res| {
             print!("{}", res);
             std::io::stdout().flush().unwrap();
             Ok(())
-        })
-        .unwrap();
-        println!();
+        }) {
+            Ok(()) => {
+                println!();
+                continue;
+            }
+            Err(e) => {
+                err_num += 1;
+                println!("network error");
+                println!("request is : {}", message);
+                if err_num > 3 {
+                    panic!("{:#?}", e);
+                }
+                println!("retrying...");
+                continue;
+            }
+        }
     }
 }

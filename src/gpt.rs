@@ -41,7 +41,24 @@ impl GptClient {
                 message: "Cause Error at GptClient::stream_chat".to_string(),
             })?;
         let mut line = String::new();
-        while reader.read_line(&mut line).expect(&format!("request : ")) > 0 {
+        let mut read_len = 1;
+        let mut err_num = 0;
+        while read_len > 0 {
+            match reader.read_line(&mut line) {
+                Ok(len) => read_len = len,
+                Err(e) => {
+                    err_num += 1;
+                    println!("network error");
+                    if err_num > 3 {
+                        return Err(GptClientError {
+                            kind: GptClientErrorKind::ReadStreamError(e.to_string()),
+                            message: "Cause Error at GptClient::stream_chat".to_string(),
+                        });
+                    }
+                    println!("retrying...");
+                    continue;
+                }
+            }
             if line.starts_with("data:") {
                 let data = line.trim_start_matches("data:").trim();
                 let chat: serde_json::Result<StreamChat> = serde_json::from_str(data);
