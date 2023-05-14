@@ -41,7 +41,7 @@ impl GptClient {
                 message: "Cause Error at GptClient::stream_chat".to_string(),
             })?;
         let mut line = String::new();
-        while reader.read_line(&mut line).unwrap() > 0 {
+        while reader.read_line(&mut line).expect(&format!("request : ")) > 0 {
             if line.starts_with("data:") {
                 let data = line.trim_start_matches("data:").trim();
                 let chat: serde_json::Result<StreamChat> = serde_json::from_str(data);
@@ -56,7 +56,7 @@ impl GptClient {
                         }
                     }
                     Err(e) => {
-                        if data == "[DONE]" {
+                        if self.is_end_answer(data) {
                             return Ok(());
                         }
                         return Err(GptClientError {
@@ -70,8 +70,12 @@ impl GptClient {
         }
         Ok(())
     }
+    fn is_end_answer(&self, data: &str) -> bool {
+        data == "[DONE]"
+    }
     fn make_chat_body(&self, message: impl Into<String>) -> Result<ChatRequest> {
         let message = message.into();
+        let message = message.trim().to_string();
         self.factory.borrow_mut().push_request(&message);
         Ok(self.factory.borrow().make_request())
     }
