@@ -23,9 +23,12 @@ impl GptClient {
         let url = "https://api.openai.com/v1/chat/completions";
         let body = self.make_chat_body(message)?;
         println!("send request ...");
+        println!("wait response ...");
         let response = self.post(url, body).await?;
         let res_message = self.response_text(response).await?;
-        println!("response : {}", res_message);
+        println!();
+        println!("gpt > : {}", res_message);
+        println!();
         Ok(())
     }
     async fn response_text(&self, response: Response) -> Result<String> {
