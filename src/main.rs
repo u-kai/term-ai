@@ -4,7 +4,8 @@ use term_ai::gpt::GptClient;
 #[tokio::main]
 async fn main() {
     let gpt = GptClient::from_env().unwrap();
-    gpt.chat("Hello, World!").await.unwrap();
+    gpt.chat("k8sについて教えて").await.unwrap();
+    gpt.chat("なんでそんなにいいの？").await.unwrap();
 }
 
 #[derive(Parser)]

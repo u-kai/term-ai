@@ -1,14 +1,18 @@
-use std::{f32::consts::E, fmt::Display};
+use std::{cell::RefCell, fmt::Display};
 
 use reqwest::{header::CONTENT_TYPE, Response};
 
 pub struct GptClient {
     api_key: String,
+    factory: RefCell<ChatFactory>,
 }
 impl GptClient {
     pub fn from_env() -> Result<Self> {
         match std::env::var("OPENAI_API_KEY") {
-            Ok(api_key) => Ok(Self { api_key }),
+            Ok(api_key) => Ok(Self {
+                api_key,
+                factory: RefCell::new(ChatFactory::new()),
+            }),
             Err(_) => Err(GptClientError {
                 message: "Cause Error at GptClient::from_env".to_string(),
                 kind: GptClientErrorKind::NotFoundEnvAPIKey,
@@ -17,14 +21,48 @@ impl GptClient {
     }
     pub async fn chat(&self, message: impl Into<String>) -> Result<()> {
         let url = "https://api.openai.com/v1/chat/completions";
-        let body = Self::make_chat_body(message)?;
+        let body = self.make_chat_body(message)?;
         let response = self.post(url, body).await?;
-        let mut text = response.text().await.unwrap();
-        println!("{}", text);
+        let res_message = self.response_text(response).await?;
+        println!("res : {}", res_message);
         Ok(())
     }
+    async fn response_text(&self, response: Response) -> Result<String> {
+        match response.text().await {
+            Ok(response) => {
+                let response = serde_json::from_str::<ChatResponse>(&response);
+                match response {
+                    Ok(response) => {
+                        let Some(Some(Some(Some(res_message)))) = response.choices.map(|mut c|c.pop().map(|c|c.message.map(|m|m.content))) else {
+                            return Err(GptClientError {
+                                message: "Cause Error at GptClient::response_text".to_string(),
+                                kind: GptClientErrorKind::NotFoundResponseContent,
+                            })
+                        };
+                        self.factory.borrow_mut().push_response(&res_message);
+                        Ok(res_message)
+                    }
+                    Err(e) => Err(GptClientError {
+                        message: "Cause Error at GptClient::response_text".to_string(),
+                        kind: GptClientErrorKind::ResponseDeserializeError(e.to_string()),
+                    }),
+                }
+            }
+            Err(e) => Err(GptClientError {
+                message: "Cause Error at GptClient::response_text".to_string(),
+                kind: GptClientErrorKind::RequestError(e.to_string()),
+            }),
+        }
+    }
     async fn post(&self, url: &'static str, body: String) -> Result<Response> {
-        match self.make_post_request(url, body).send().await {
+        match reqwest::Client::new()
+            .post(url)
+            .body(body)
+            .bearer_auth(self.api_key.as_str())
+            .header(CONTENT_TYPE, "application/json")
+            .send()
+            .await
+        {
             Ok(res) => Ok(res),
             Err(e) => Err(GptClientError {
                 message: "Cause Error at GptClient::post".to_string(),
@@ -32,22 +70,10 @@ impl GptClient {
             }),
         }
     }
-    fn make_post_request(&self, url: &'static str, body: String) -> reqwest::RequestBuilder {
-        reqwest::Client::new()
-            .post(url)
-            .body(body)
-            .bearer_auth(self.api_key.as_str())
-            .header(CONTENT_TYPE, "application/json")
-    }
-    fn make_chat_body(message: impl Into<String>) -> Result<String> {
+    fn make_chat_body(&self, message: impl Into<String>) -> Result<String> {
         let message = message.into();
-        match serde_json::to_string(&ChatRequest {
-            model: OpenAIModel::Gpt3Dot5Turbo,
-            messages: vec![Message {
-                role: Role::User,
-                content: message,
-            }],
-        }) {
+        self.factory.borrow_mut().push_request(&message);
+        match serde_json::to_string(&self.factory.borrow().make_request()) {
             Err(e) => Err(GptClientError {
                 message: "Cause generate api json body".to_string(),
                 kind: GptClientErrorKind::NotMakeChatBody(e.to_string()),
@@ -129,7 +155,9 @@ impl Display for GptClientError {
 #[derive(Debug)]
 pub enum GptClientErrorKind {
     NotFoundEnvAPIKey,
+    NotFoundResponseContent,
     RequestError(String),
+    ResponseDeserializeError(String),
     NotMakeChatBody(String),
 }
 impl Display for GptClientErrorKind {
@@ -138,6 +166,10 @@ impl Display for GptClientErrorKind {
             Self::NotFoundEnvAPIKey => "Not found OPENAI_API_KEY in env".to_string(),
             Self::RequestError(s) => format!("Request Error to {}", s),
             Self::NotMakeChatBody(s) => format!("Not make chat body from {}", s),
+            Self::NotFoundResponseContent => format!("Response Content is Not Found"),
+            Self::ResponseDeserializeError(s) => {
+                format!("Not Deserialize response. Serde Error is :  {}", s)
+            }
         };
         write!(f, "{}", kind)
     }
