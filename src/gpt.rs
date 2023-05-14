@@ -5,6 +5,7 @@ use rsse::{client::SseClient, request_builder::RequestBuilder};
 pub struct GptClient {
     api_key: String,
     sse_client: SseClient,
+    model: OpenAIModel,
     factory: RefCell<ChatFactory>,
 }
 impl GptClient {
@@ -13,6 +14,7 @@ impl GptClient {
         match std::env::var("OPENAI_API_KEY") {
             Ok(api_key) => Ok(Self {
                 api_key,
+                model: OpenAIModel::default(),
                 sse_client: SseClient::default(Self::URL).unwrap(),
                 factory: RefCell::new(ChatFactory::new()),
             }),
@@ -21,6 +23,9 @@ impl GptClient {
                 kind: GptClientErrorKind::NotFoundEnvAPIKey,
             }),
         }
+    }
+    pub fn change_model(&mut self, model: OpenAIModel) {
+        self.model = model;
     }
     pub fn stream_chat(
         &mut self,
@@ -83,6 +88,10 @@ impl GptClient {
                     }
                 }
             }
+            println!("{}", line);
+            if line.starts_with("error") {
+                println!("{}", line);
+            }
             line.clear();
         }
         Ok(())
@@ -94,7 +103,7 @@ impl GptClient {
         let message = message.into();
         let message = message.trim().to_string();
         self.factory.borrow_mut().push_request(&message);
-        Ok(self.factory.borrow().make_request())
+        Ok(self.factory.borrow().make_request(self.model))
     }
 }
 
@@ -132,9 +141,18 @@ impl serde::Serialize for Role {
         serializer.serialize_str(role)
     }
 }
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, serde::Deserialize)]
 pub enum OpenAIModel {
     Gpt3Dot5Turbo,
+    Gpt4,
+    Gpt40314,
+    Gpt4032k,
+    Gpt4032k0314,
+}
+impl Default for OpenAIModel {
+    fn default() -> Self {
+        Self::Gpt3Dot5Turbo
+    }
 }
 impl serde::Serialize for OpenAIModel {
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
@@ -149,6 +167,10 @@ impl OpenAIModel {
     pub fn into_str(&self) -> &'static str {
         match self {
             Self::Gpt3Dot5Turbo => "gpt-3.5-turbo",
+            Self::Gpt4 => "gpt-4",
+            Self::Gpt40314 => "gpt-4-0314",
+            Self::Gpt4032k => "gpt-4-032k",
+            Self::Gpt4032k0314 => "gpt-4-032k-0314",
         }
     }
 }
@@ -229,9 +251,9 @@ impl ChatFactory {
         Self { stack: Vec::new() }
     }
 
-    fn make_request(&self) -> ChatRequest {
+    fn make_request(&self, model: OpenAIModel) -> ChatRequest {
         ChatRequest {
-            model: OpenAIModel::Gpt3Dot5Turbo,
+            model,
             messages: self.stack.clone(),
             stream: true,
         }
@@ -256,12 +278,12 @@ mod tests {
     fn chatの結果を保存してリクエストを作成する() {
         let mut sut = ChatFactory::new();
         sut.push_request("hello world");
-        let request = sut.make_request();
+        let request = sut.make_request(OpenAIModel::default());
         assert_eq!(request.messages[0].content, "hello world");
         assert_eq!(request.messages[0].role, Role::User);
         sut.push_response("hello world! have a nice day");
         sut.push_request("what?");
-        let request = sut.make_request();
+        let request = sut.make_request(OpenAIModel::default());
         assert_eq!(request.messages[0].content, "hello world");
         assert_eq!(request.messages[1].content, "hello world! have a nice day");
         assert_eq!(request.messages[1].role, Role::Assistant);
