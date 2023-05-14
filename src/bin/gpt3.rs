@@ -1,4 +1,4 @@
-use std::{io::Write, thread::panicking};
+use std::io::Write;
 
 use term_ai::gpt::GptClient;
 
