@@ -1,16 +1,19 @@
-use std::{cell::RefCell, fmt::Display};
+use std::{cell::RefCell, fmt::Display, io::BufRead};
 
-use reqwest::{header::CONTENT_TYPE, Response};
+use rsse::{client::SseClient, request_builder::RequestBuilder};
 
 pub struct GptClient {
     api_key: String,
+    sse_client: SseClient,
     factory: RefCell<ChatFactory>,
 }
 impl GptClient {
+    const URL: &'static str = "https://api.openai.com/v1/chat/completions";
     pub fn from_env() -> Result<Self> {
         match std::env::var("OPENAI_API_KEY") {
             Ok(api_key) => Ok(Self {
                 api_key,
+                sse_client: SseClient::default(Self::URL).unwrap(),
                 factory: RefCell::new(ChatFactory::new()),
             }),
             Err(_) => Err(GptClientError {
@@ -19,71 +22,58 @@ impl GptClient {
             }),
         }
     }
-    pub async fn chat(&self, message: impl Into<String>) -> Result<()> {
-        let url = "https://api.openai.com/v1/chat/completions";
-        let body = self.make_chat_body(message)?;
-        println!("send request ...");
-        println!("wait response ...");
-        let response = self.post(url, body).await?;
-        let res_message = self.response_text(response).await?;
-        println!();
-        println!("gpt > : {}", res_message);
-        println!();
-        Ok(())
-    }
-    async fn response_text(&self, response: Response) -> Result<String> {
-        match response.text().await {
-            Ok(response) => {
-                let response = serde_json::from_str::<ChatResponse>(&response);
-                match response {
-                    Ok(response) => {
-                        let Some(res_message) = response.last_response() else {
-                            return Err(GptClientError {
-                                message: "Cause Error at GptClient::response_text".to_string(),
-                                kind: GptClientErrorKind::NotFoundResponseContent,
-                            })
-                        };
-                        self.factory.borrow_mut().push_response(&res_message);
-                        Ok(res_message)
+    pub fn stream_chat(
+        &mut self,
+        message: impl Into<String>,
+        handler: impl Fn(String) -> Result<()>,
+    ) -> Result<()> {
+        let json = self.make_chat_body(message)?;
+        let request = RequestBuilder::new(Self::URL)
+            .post()
+            .bearer_auth(self.api_key.as_str())
+            .json(json)
+            .build();
+        let mut reader = self
+            .sse_client
+            .stream_reader(request)
+            .map_err(|e| GptClientError {
+                kind: GptClientErrorKind::ReadStreamError(e.to_string()),
+                message: "Cause Error at GptClient::stream_chat".to_string(),
+            })?;
+        let mut line = String::new();
+        while reader.read_line(&mut line).unwrap() > 0 {
+            if line.starts_with("data:") {
+                let data = line.trim_start_matches("data:").trim();
+                let chat: serde_json::Result<StreamChat> = serde_json::from_str(data);
+                match chat {
+                    Ok(chat) => {
+                        if let Some(content) = chat.last_response() {
+                            self.factory.borrow_mut().push_response(content.as_str());
+                            match handler(content) {
+                                Ok(_) => (),
+                                Err(e) => return Err(e),
+                            }
+                        }
                     }
-                    Err(e) => Err(GptClientError {
-                        message: "Cause Error at GptClient::response_text".to_string(),
-                        kind: GptClientErrorKind::ResponseDeserializeError(e.to_string()),
-                    }),
+                    Err(e) => {
+                        if data == "[DONE]" {
+                            return Ok(());
+                        }
+                        return Err(GptClientError {
+                            kind: GptClientErrorKind::ResponseDeserializeError(e.to_string()),
+                            message: "Cause Error at GptClient::stream_chat".to_string(),
+                        });
+                    }
                 }
             }
-            Err(e) => Err(GptClientError {
-                message: "Cause Error at GptClient::response_text".to_string(),
-                kind: GptClientErrorKind::RequestError(e.to_string()),
-            }),
+            line.clear();
         }
+        Ok(())
     }
-    async fn post(&self, url: &'static str, body: String) -> Result<Response> {
-        match reqwest::Client::new()
-            .post(url)
-            .body(body)
-            .bearer_auth(self.api_key.as_str())
-            .header(CONTENT_TYPE, "application/json")
-            .send()
-            .await
-        {
-            Ok(res) => Ok(res),
-            Err(e) => Err(GptClientError {
-                message: "Cause Error at GptClient::post".to_string(),
-                kind: GptClientErrorKind::RequestError(e.to_string()),
-            }),
-        }
-    }
-    fn make_chat_body(&self, message: impl Into<String>) -> Result<String> {
+    fn make_chat_body(&self, message: impl Into<String>) -> Result<ChatRequest> {
         let message = message.into();
         self.factory.borrow_mut().push_request(&message);
-        match serde_json::to_string(&self.factory.borrow().make_request()) {
-            Err(e) => Err(GptClientError {
-                message: "Cause generate api json body".to_string(),
-                kind: GptClientErrorKind::NotMakeChatBody(e.to_string()),
-            }),
-            Ok(body) => Ok(body),
-        }
+        Ok(self.factory.borrow().make_request())
     }
 }
 
@@ -91,6 +81,7 @@ impl GptClient {
 struct ChatRequest {
     model: OpenAIModel,
     messages: Vec<Message>,
+    stream: bool,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -160,6 +151,7 @@ impl Display for GptClientError {
 pub enum GptClientErrorKind {
     NotFoundEnvAPIKey,
     NotFoundResponseContent,
+    ReadStreamError(String),
     RequestError(String),
     ResponseDeserializeError(String),
     NotMakeChatBody(String),
@@ -171,6 +163,7 @@ impl Display for GptClientErrorKind {
             Self::RequestError(s) => format!("Request Error to {}", s),
             Self::NotMakeChatBody(s) => format!("Not make chat body from {}", s),
             Self::NotFoundResponseContent => format!("Response Content is Not Found"),
+            Self::ReadStreamError(s) => format!("Not Read Stream. Error is : {}", s),
             Self::ResponseDeserializeError(s) => {
                 format!("Not Deserialize response. Serde Error is :  {}", s)
             }
@@ -181,36 +174,28 @@ impl Display for GptClientErrorKind {
 impl std::error::Error for GptClientError {}
 pub type Result<T> = std::result::Result<T, GptClientError>;
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
-pub struct ChatResponse {
-    pub choices: Option<Vec<ChatResponseChoices>>,
-    pub created: Option<usize>,
-    pub id: Option<String>,
-    pub object: Option<String>,
-    pub usage: Option<ChatResponseUsage>,
+pub struct StreamChat {
+    pub choices: Vec<StreamChatChoices>,
+    pub created: usize,
+    pub id: String,
+    pub model: String,
+    pub object: String,
 }
-impl ChatResponse {
-    fn last_response(self) -> Option<String> {
-        self.choices?.pop()?.message?.content
+impl StreamChat {
+    pub fn last_response(mut self) -> Option<String> {
+        self.choices.pop()?.delta.content
     }
 }
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
-pub struct ChatResponseChoices {
-    pub finish_reason: Option<String>,
-    pub index: Option<usize>,
-    pub message: Option<ChatResponseChoicesMessage>,
+pub struct StreamChatChoices {
+    pub delta: StreamChatChoicesDelta,
+    pub finish_reason: serde_json::Value,
+    pub index: usize,
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
-pub struct ChatResponseChoicesMessage {
+pub struct StreamChatChoicesDelta {
     pub content: Option<String>,
-    pub role: Option<String>,
-}
-
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
-pub struct ChatResponseUsage {
-    pub completion_tokens: Option<usize>,
-    pub prompt_tokens: Option<usize>,
-    pub total_tokens: Option<usize>,
 }
 
 #[derive(Debug)]
@@ -227,6 +212,7 @@ impl ChatFactory {
         ChatRequest {
             model: OpenAIModel::Gpt3Dot5Turbo,
             messages: self.stack.clone(),
+            stream: true,
         }
     }
     fn push_response(&mut self, message: impl Into<String>) {
