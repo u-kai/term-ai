@@ -3,11 +3,12 @@ use std::io::Write;
 use term_ai::gpt::GptClient;
 
 fn main() {
+    println!("Welcome to GPT3 REPL");
     let mut gpt = GptClient::from_env().unwrap();
     let mut err_num = 0;
     loop {
         let mut message = String::new();
-        print!("{} > ", std::env::var("USER").unwrap_or_default());
+        print!("{} > ", std::env::var("USER").unwrap_or("you".to_string()));
         std::io::stdout().flush().unwrap();
         std::io::stdin().read_line(&mut message).unwrap();
         print!("gpt > ");

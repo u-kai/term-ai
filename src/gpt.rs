@@ -1,19 +1,45 @@
-use std::{cell::RefCell, fmt::Display, io::BufRead};
+use std::{
+    cell::RefCell,
+    fmt::{Debug, Display},
+    io::BufRead,
+};
 
 use rsse::{client::SseClient, request_builder::RequestBuilder};
 
+struct OpenAIKey(String);
+
+impl OpenAIKey {
+    fn new(key: impl Into<String>) -> Self {
+        Self(key.into())
+    }
+    fn key(&self) -> &str {
+        self.0.as_str()
+    }
+}
+impl Debug for OpenAIKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", "x".repeat(self.0.len()))
+    }
+}
+impl Display for OpenAIKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", "x".repeat(self.0.len()))
+    }
+}
+#[derive(Debug)]
 pub struct GptClient {
-    api_key: String,
+    api_key: OpenAIKey,
     sse_client: SseClient,
     model: OpenAIModel,
     factory: RefCell<ChatFactory>,
 }
+
 impl GptClient {
     const URL: &'static str = "https://api.openai.com/v1/chat/completions";
     pub fn from_env() -> Result<Self> {
         match std::env::var("OPENAI_API_KEY") {
             Ok(api_key) => Ok(Self {
-                api_key,
+                api_key: OpenAIKey::new(api_key),
                 model: OpenAIModel::default(),
                 sse_client: SseClient::default(Self::URL).unwrap(),
                 factory: RefCell::new(ChatFactory::new()),
@@ -35,7 +61,7 @@ impl GptClient {
         let json = self.make_chat_body(message)?;
         let request = RequestBuilder::new(Self::URL)
             .post()
-            .bearer_auth(self.api_key.as_str())
+            .bearer_auth(self.api_key.key())
             .json(json)
             .build();
         let mut reader = self
@@ -88,9 +114,11 @@ impl GptClient {
                     }
                 }
             }
-            println!("{}", line);
-            if line.starts_with("error") {
-                println!("{}", line);
+            if line.contains("error") {
+                return Err(GptClientError {
+                    kind: GptClientErrorKind::ResponseError(line),
+                    message: "Cause Error at GptClient::stream_chat".to_string(),
+                });
             }
             line.clear();
         }
@@ -198,6 +226,7 @@ pub enum GptClientErrorKind {
     RequestError(String),
     ResponseDeserializeError(String),
     NotMakeChatBody(String),
+    ResponseError(String),
 }
 impl Display for GptClientErrorKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -210,6 +239,7 @@ impl Display for GptClientErrorKind {
             Self::ResponseDeserializeError(s) => {
                 format!("Not Deserialize response. Serde Error is :  {}", s)
             }
+            Self::ResponseError(s) => format!("Response Error. Error is : {}", s),
         };
         write!(f, "{}", kind)
     }
