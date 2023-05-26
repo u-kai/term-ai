@@ -6,10 +6,10 @@ use std::{
 use rsse::{ErrorHandler, EventHandler, SseClient, SseResult};
 
 #[derive(Debug, Clone)]
-struct ChatStore {
+struct ChatHistory {
     inner: Vec<Message>,
 }
-impl ChatStore {
+impl ChatHistory {
     fn new() -> Self {
         Self { inner: Vec::new() }
     }
@@ -79,7 +79,7 @@ impl<F: Fn(&str) -> ()> EventHandler<ChatResponse> for ChatHandler<F> {
                     return self.finished();
                 }
                 return Err(GptClientError {
-                    message: "Cause Error at ChatHandler::handle".to_string(),
+                    message: e.to_string(),
                     kind: GptClientErrorKind::ResponseDeserializeError(event.to_string()),
                 });
             }
@@ -119,13 +119,13 @@ impl ErrorHandler<ChatResponse> for ChatErrorHandler {
                 });
             }
             _ => {
-                //if *err_counter > 3 {
-                return Err(GptClientError {
-                    message: "Cause Error at ChatErrorHandler::catch".to_string(),
-                    kind: GptClientErrorKind::RequestError(error.to_string()),
-                });
-                //}
-                //return Ok(SseResult::Retry);
+                if *err_counter > 3 {
+                    return Err(GptClientError {
+                        message: "Cause Error at ChatErrorHandler::catch".to_string(),
+                        kind: GptClientErrorKind::RequestError(error.to_string()),
+                    });
+                }
+                return Ok(SseResult::Retry);
             }
         }
     }
@@ -141,7 +141,7 @@ impl ChatErrorHandler {
 pub struct GptClient {
     api_key: OpenAIKey,
     model: OpenAIModel,
-    store: ChatStore,
+    history: ChatHistory,
 }
 
 impl GptClient {
@@ -151,7 +151,7 @@ impl GptClient {
             Ok(api_key) => Ok(Self {
                 api_key: OpenAIKey::new(api_key),
                 model: OpenAIModel::default(),
-                store: ChatStore::new(),
+                history: ChatHistory::new(),
             }),
             Err(_) => Err(GptClientError {
                 message: "Cause Error at GptClient::from_env".to_string(),
@@ -166,8 +166,8 @@ impl GptClient {
     }
     pub fn chat<F: Fn(&str) -> ()>(&mut self, message: impl Into<String>, f: &F) -> Result<String> {
         let message: String = message.into();
-        self.store.push_request(message.as_str());
-        let request = make_stream_request(self.model, self.store.inner.clone());
+        self.history.push_request(message.as_str());
+        let request = make_stream_request(self.model, &self.history);
         let result = Self::client(f)
             .bearer_auth(self.api_key.key())
             .post()
@@ -181,8 +181,8 @@ impl GptClient {
             SseResult::Continue => Ok("".to_string()),
             SseResult::Retry => self.chat(message, f),
             SseResult::Finished(c) => {
-                self.store.push_response(c);
-                Ok(self.store.last_response().unwrap().to_string())
+                self.history.push_response(c);
+                Ok(self.history.last_response().unwrap().to_string())
             }
         }
     }
@@ -324,7 +324,8 @@ pub struct StreamChatChoicesDelta {
     pub content: Option<String>,
 }
 
-fn make_stream_request(model: OpenAIModel, messages: Vec<Message>) -> ChatRequest {
+fn make_stream_request(model: OpenAIModel, history: &ChatHistory) -> ChatRequest {
+    let messages = history.inner.clone();
     ChatRequest {
         model,
         messages,
@@ -332,36 +333,6 @@ fn make_stream_request(model: OpenAIModel, messages: Vec<Message>) -> ChatReques
     }
 }
 
-#[derive(Debug)]
-struct ChatHistory {
-    stack: Vec<Message>,
-}
-
-impl ChatHistory {
-    fn new() -> Self {
-        Self { stack: Vec::new() }
-    }
-
-    fn make_request(&self, model: OpenAIModel) -> ChatRequest {
-        ChatRequest {
-            model,
-            messages: self.stack.clone(),
-            stream: true,
-        }
-    }
-    fn push_response(&mut self, message: impl Into<String>) {
-        self.stack.push(Message {
-            role: Role::Assistant,
-            content: message.into(),
-        });
-    }
-    fn push_request(&mut self, message: impl Into<String>) {
-        self.stack.push(Message {
-            role: Role::User,
-            content: message.into(),
-        });
-    }
-}
 struct OpenAIKey(String);
 
 impl OpenAIKey {
@@ -380,25 +351,5 @@ impl Debug for OpenAIKey {
 impl Display for OpenAIKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", "x".repeat(self.0.len()))
-    }
-}
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn chatの結果を保存してリクエストを作成する() {
-        let mut sut = ChatHistory::new();
-        sut.push_request("hello world");
-        let request = sut.make_request(OpenAIModel::default());
-        assert_eq!(request.messages[0].content, "hello world");
-        assert_eq!(request.messages[0].role, Role::User);
-        sut.push_response("hello world! have a nice day");
-        sut.push_request("what?");
-        let request = sut.make_request(OpenAIModel::default());
-        assert_eq!(request.messages[0].content, "hello world");
-        assert_eq!(request.messages[1].content, "hello world! have a nice day");
-        assert_eq!(request.messages[1].role, Role::Assistant);
-        assert_eq!(request.messages[2].content, "what?");
-        assert_eq!(request.messages[2].role, Role::User);
     }
 }

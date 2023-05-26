@@ -4,8 +4,10 @@ struct Cli {
     #[clap(subcommand)]
     sub: Sub,
 }
-#[derive(Subcommand)]
-enum Sub {
-    // sub command hear
-    // #[clap(short, long)]
-}
+//#[derive(Subcommand)]
+//enum Sub {
+//#[clap(short, long)]
+//Gpt3,
+//#[clap(short, long)]
+//English
+//}

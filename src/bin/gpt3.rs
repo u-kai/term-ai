@@ -20,25 +20,4 @@ fn main() {
             .unwrap();
         println!("{}", result);
     }
-    //match gpt.chat(&message, |res| {
-    //println!("{}", res);
-    ////std::io::stdout().flush().unwrap();
-    //Ok(())
-    //}) {
-    //Ok(()) => {
-    //println!();
-    //continue;
-    //}
-    //Err(e) => {
-    //err_num += 1;
-    //println!("network error");
-    //println!("request is : {}", message);
-    //if err_num > 3 {
-    //panic!("{:#?}", e);
-    //}
-    //println!("retrying...");
-    //continue;
-    //}
-    //}
-    //}
 }
