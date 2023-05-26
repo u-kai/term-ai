@@ -1,8 +1,6 @@
 use std::{
-    borrow::{Borrow, BorrowMut},
     cell::RefCell,
     fmt::{Debug, Display},
-    io::BufRead,
 };
 
 use rsse::{ErrorHandler, EventHandler, SseClient, SseResult};
@@ -143,8 +141,7 @@ impl ChatErrorHandler {
 pub struct GptClient {
     api_key: OpenAIKey,
     model: OpenAIModel,
-    store: RefCell<ChatStore>,
-    //sse_client: RefCell<SseClient<ChatHandler, ChatErrorHandler, ChatStore>>,
+    store: ChatStore,
 }
 
 impl GptClient {
@@ -154,7 +151,7 @@ impl GptClient {
             Ok(api_key) => Ok(Self {
                 api_key: OpenAIKey::new(api_key),
                 model: OpenAIModel::default(),
-                store: RefCell::new(ChatStore::new()),
+                store: ChatStore::new(),
             }),
             Err(_) => Err(GptClientError {
                 message: "Cause Error at GptClient::from_env".to_string(),
@@ -169,8 +166,8 @@ impl GptClient {
     }
     pub fn chat<F: Fn(&str) -> ()>(&mut self, message: impl Into<String>, f: &F) -> Result<String> {
         let message: String = message.into();
-        self.store.borrow_mut().push_request(message.as_str());
-        let request = make_stream_request(self.model, self.store.borrow().inner.clone());
+        self.store.push_request(message.as_str());
+        let request = make_stream_request(self.model, self.store.inner.clone());
         let result = Self::client(f)
             .bearer_auth(self.api_key.key())
             .post()
@@ -184,8 +181,8 @@ impl GptClient {
             SseResult::Continue => Ok("".to_string()),
             SseResult::Retry => self.chat(message, f),
             SseResult::Finished(c) => {
-                self.store.borrow_mut().push_response(c);
-                Ok(self.store.borrow().last_response().unwrap().to_string())
+                self.store.push_response(c);
+                Ok(self.store.last_response().unwrap().to_string())
             }
         }
     }
