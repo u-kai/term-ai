@@ -1,37 +1,150 @@
 use std::{
+    borrow::{Borrow, BorrowMut},
     cell::RefCell,
     fmt::{Debug, Display},
     io::BufRead,
 };
 
-use rsse::{client::SseClient, request_builder::RequestBuilder};
+use rsse::{ErrorHandler, EventHandler, SseClient, SseResult};
 
-struct OpenAIKey(String);
-
-impl OpenAIKey {
-    fn new(key: impl Into<String>) -> Self {
-        Self(key.into())
+#[derive(Debug, Clone)]
+struct ChatStore {
+    inner: Vec<Message>,
+}
+impl ChatStore {
+    fn new() -> Self {
+        Self { inner: Vec::new() }
     }
-    fn key(&self) -> &str {
-        self.0.as_str()
+    fn last_response(&self) -> Option<&str> {
+        self.inner.last().map(|m| m.content.as_str())
+    }
+    fn push_response(&mut self, message: ChatResponse) {
+        self.inner.push(Message {
+            role: Role::Assistant,
+            content: message.0,
+        });
+    }
+    fn push_request(&mut self, message: impl Into<String>) {
+        self.inner.push(Message {
+            role: Role::User,
+            content: message.into(),
+        });
     }
 }
-impl Debug for OpenAIKey {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", "x".repeat(self.0.len()))
+
+#[derive(Debug)]
+struct ChatStream(String);
+impl ChatStream {
+    fn new() -> Self {
+        Self(String::new())
     }
-}
-impl Display for OpenAIKey {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", "x".repeat(self.0.len()))
+    fn gen_response(&self) -> ChatResponse {
+        ChatResponse(self.0.clone())
+    }
+    fn connect(&mut self, message: &str) {
+        self.0.push_str(message);
     }
 }
 #[derive(Debug)]
+struct ChatResponse(String);
+#[derive(Debug)]
+pub struct ChatHandler<F: Fn(&str) -> ()> {
+    f: F,
+    stream: RefCell<ChatStream>,
+}
+impl<F: Fn(&str) -> ()> ChatHandler<F> {
+    pub fn new(f: F) -> Self {
+        Self {
+            f,
+            stream: RefCell::new(ChatStream::new()),
+        }
+    }
+}
+impl<F: Fn(&str) -> ()> EventHandler<ChatResponse> for ChatHandler<F> {
+    type Err = GptClientError;
+    fn finished(&self) -> std::result::Result<SseResult<ChatResponse>, Self::Err> {
+        Ok(SseResult::Finished(self.stream.borrow().gen_response()))
+    }
+    fn handle(&self, event: &str) -> std::result::Result<SseResult<ChatResponse>, Self::Err> {
+        let chat: serde_json::Result<StreamChat> = serde_json::from_str(event);
+        match chat {
+            Ok(chat) => {
+                let Some(response ) =  chat.last_response() else {
+                    return Ok(SseResult::Continue);
+                };
+                (self.f)(response.as_str());
+                self.stream.borrow_mut().connect(response.as_str());
+                Ok(SseResult::Continue)
+            }
+            Err(e) => {
+                if event == "[DONE]" {
+                    return self.finished();
+                }
+                return Err(GptClientError {
+                    message: "Cause Error at ChatHandler::handle".to_string(),
+                    kind: GptClientErrorKind::ResponseDeserializeError(event.to_string()),
+                });
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+struct ChatErrorHandler {
+    err_counter: RefCell<usize>,
+}
+
+impl ErrorHandler<ChatResponse> for ChatErrorHandler {
+    type Err = GptClientError;
+    fn catch(
+        &self,
+        error: rsse::SseHandlerError,
+    ) -> std::result::Result<SseResult<ChatResponse>, Self::Err> {
+        let mut err_counter = self.err_counter.borrow_mut();
+        *err_counter += 1;
+        match error {
+            rsse::SseHandlerError::HttpResponseError {
+                message,
+                read_line,
+                request,
+                response,
+            } => {
+                if *err_counter > 3 {
+                    return Err(GptClientError {
+                        message: "Cause Error at ChatErrorHandler::catch".to_string(),
+                        kind: GptClientErrorKind::RequestError(read_line),
+                    });
+                }
+                return Err(GptClientError {
+                    message: message,
+                    kind: GptClientErrorKind::RequestError(response.status_text().to_string()),
+                });
+            }
+            _ => {
+                //if *err_counter > 3 {
+                return Err(GptClientError {
+                    message: "Cause Error at ChatErrorHandler::catch".to_string(),
+                    kind: GptClientErrorKind::RequestError(error.to_string()),
+                });
+                //}
+                //return Ok(SseResult::Retry);
+            }
+        }
+    }
+}
+impl ChatErrorHandler {
+    fn new() -> Self {
+        Self {
+            err_counter: RefCell::new(0),
+        }
+    }
+}
+
 pub struct GptClient {
     api_key: OpenAIKey,
-    sse_client: SseClient,
     model: OpenAIModel,
-    factory: RefCell<ChatFactory>,
+    store: RefCell<ChatStore>,
+    //sse_client: RefCell<SseClient<ChatHandler, ChatErrorHandler, ChatStore>>,
 }
 
 impl GptClient {
@@ -41,8 +154,7 @@ impl GptClient {
             Ok(api_key) => Ok(Self {
                 api_key: OpenAIKey::new(api_key),
                 model: OpenAIModel::default(),
-                sse_client: SseClient::default(Self::URL).unwrap(),
-                factory: RefCell::new(ChatFactory::new()),
+                store: RefCell::new(ChatStore::new()),
             }),
             Err(_) => Err(GptClientError {
                 message: "Cause Error at GptClient::from_env".to_string(),
@@ -50,88 +162,32 @@ impl GptClient {
             }),
         }
     }
-    pub fn change_model(&mut self, model: OpenAIModel) {
-        self.model = model;
+    fn client<F: Fn(&str) -> ()>(
+        f: F,
+    ) -> SseClient<ChatHandler<F>, ChatErrorHandler, ChatResponse> {
+        SseClient::new(Self::URL, ChatHandler::new(f), ChatErrorHandler::new()).unwrap()
     }
-    pub fn stream_chat(
-        &mut self,
-        message: impl Into<String>,
-        handler: impl Fn(String) -> Result<()>,
-    ) -> Result<()> {
-        let json = self.make_chat_body(message)?;
-        let request = RequestBuilder::new(Self::URL)
-            .post()
+    pub fn chat<F: Fn(&str) -> ()>(&mut self, message: impl Into<String>, f: &F) -> Result<String> {
+        let message: String = message.into();
+        self.store.borrow_mut().push_request(message.as_str());
+        let request = make_stream_request(self.model, self.store.borrow().inner.clone());
+        let result = Self::client(f)
             .bearer_auth(self.api_key.key())
-            .json(json)
-            .build();
-        let mut reader = self
-            .sse_client
-            .stream_reader(request)
+            .post()
+            .json(&request)
+            .handle_event()
             .map_err(|e| GptClientError {
-                kind: GptClientErrorKind::ReadStreamError(e.to_string()),
-                message: "Cause Error at GptClient::stream_chat".to_string(),
+                message: "Cause Error at GptClient::chat".to_string(),
+                kind: GptClientErrorKind::RequestError("".to_string()),
             })?;
-        let mut line = String::new();
-        let mut read_len = 1;
-        let mut err_num = 0;
-        while read_len > 0 {
-            match reader.read_line(&mut line) {
-                Ok(len) => read_len = len,
-                Err(e) => {
-                    err_num += 1;
-                    println!("network error");
-                    if err_num > 3 {
-                        return Err(GptClientError {
-                            kind: GptClientErrorKind::ReadStreamError(e.to_string()),
-                            message: "Cause Error at GptClient::stream_chat".to_string(),
-                        });
-                    }
-                    println!("retrying...");
-                    continue;
-                }
+        match result {
+            SseResult::Continue => Ok("".to_string()),
+            SseResult::Retry => self.chat(message, f),
+            SseResult::Finished(c) => {
+                self.store.borrow_mut().push_response(c);
+                Ok(self.store.borrow().last_response().unwrap().to_string())
             }
-            if line.starts_with("data:") {
-                let data = line.trim_start_matches("data:").trim();
-                let chat: serde_json::Result<StreamChat> = serde_json::from_str(data);
-                match chat {
-                    Ok(chat) => {
-                        if let Some(content) = chat.last_response() {
-                            self.factory.borrow_mut().push_response(content.as_str());
-                            match handler(content) {
-                                Ok(_) => (),
-                                Err(e) => return Err(e),
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        if self.is_end_answer(data) {
-                            return Ok(());
-                        }
-                        return Err(GptClientError {
-                            kind: GptClientErrorKind::ResponseDeserializeError(e.to_string()),
-                            message: "Cause Error at GptClient::stream_chat".to_string(),
-                        });
-                    }
-                }
-            }
-            if line.contains("error") {
-                return Err(GptClientError {
-                    kind: GptClientErrorKind::ResponseError(line),
-                    message: "Cause Error at GptClient::stream_chat".to_string(),
-                });
-            }
-            line.clear();
         }
-        Ok(())
-    }
-    fn is_end_answer(&self, data: &str) -> bool {
-        data == "[DONE]"
-    }
-    fn make_chat_body(&self, message: impl Into<String>) -> Result<ChatRequest> {
-        let message = message.into();
-        let message = message.trim().to_string();
-        self.factory.borrow_mut().push_request(&message);
-        Ok(self.factory.borrow().make_request(self.model))
     }
 }
 
@@ -271,12 +327,20 @@ pub struct StreamChatChoicesDelta {
     pub content: Option<String>,
 }
 
+fn make_stream_request(model: OpenAIModel, messages: Vec<Message>) -> ChatRequest {
+    ChatRequest {
+        model,
+        messages,
+        stream: true,
+    }
+}
+
 #[derive(Debug)]
-struct ChatFactory {
+struct ChatHistory {
     stack: Vec<Message>,
 }
 
-impl ChatFactory {
+impl ChatHistory {
     fn new() -> Self {
         Self { stack: Vec::new() }
     }
@@ -301,12 +365,32 @@ impl ChatFactory {
         });
     }
 }
+struct OpenAIKey(String);
+
+impl OpenAIKey {
+    fn new(key: impl Into<String>) -> Self {
+        Self(key.into())
+    }
+    fn key(&self) -> &str {
+        self.0.as_str()
+    }
+}
+impl Debug for OpenAIKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", "x".repeat(self.0.len()))
+    }
+}
+impl Display for OpenAIKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", "x".repeat(self.0.len()))
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
     fn chatの結果を保存してリクエストを作成する() {
-        let mut sut = ChatFactory::new();
+        let mut sut = ChatHistory::new();
         sut.push_request("hello world");
         let request = sut.make_request(OpenAIModel::default());
         assert_eq!(request.messages[0].content, "hello world");
