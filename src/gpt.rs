@@ -33,9 +33,10 @@ impl GptClient {
         self.repl_gpt3_5()
     }
     pub fn repl_gpt3_5(&mut self) -> Result<()> {
+        let user = std::env::var("USER").unwrap_or("you".to_string());
         loop {
             let mut message = String::new();
-            print!("{} > ", std::env::var("USER").unwrap_or("you".to_string()));
+            print!("{} > ", user);
             std::io::stdout().flush().unwrap();
             std::io::stdin().read_line(&mut message).unwrap();
             print!("gpt > ");
