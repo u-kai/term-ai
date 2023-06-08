@@ -353,7 +353,7 @@ dependencies = [
 [[package]]
 name = "rsse"
 version = "0.1.0"
-source = "git+https://github.com/u-kai/rsse.git?branch=proxy#ddc3be525d640f0cd1185542d8be60f39a3c97f3"
+source = "git+https://github.com/u-kai/rsse.git?branch=main#9618184978f33546f8143f364b634c4a9f6b7ed1"
 dependencies = [
  "rustls",
  "rustls-pemfile",

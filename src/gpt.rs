@@ -7,6 +7,7 @@ use std::{
 use rsse::{ErrorHandler, EventHandler, SseClient, SseResult};
 
 pub struct GptClient {
+    proxy_url: Option<String>,
     api_key: OpenAIKey,
     history: ChatHistory,
 }
@@ -16,6 +17,7 @@ impl GptClient {
     pub fn from_env() -> Result<Self> {
         match std::env::var("OPENAI_API_KEY") {
             Ok(api_key) => Ok(Self {
+                proxy_url: None,
                 api_key: OpenAIKey::new(api_key),
                 history: ChatHistory::new(),
             }),
@@ -24,6 +26,9 @@ impl GptClient {
                 kind: GptClientErrorKind::NotFoundEnvAPIKey,
             }),
         }
+    }
+    pub fn set_proxy(&mut self, proxy_url: impl Into<String>) {
+        self.proxy_url = Some(proxy_url.into());
     }
     pub fn repl_gpt3_5_with_first_command(&mut self, message: &str) -> Result<()> {
         println!("setting gpt3...");
@@ -64,14 +69,18 @@ impl GptClient {
         let message: String = message.into();
         self.history.push_request(message.as_str());
         let request = self.make_stream_request(model);
-        let result = Self::client(f)
+        let client = match &self.proxy_url {
+            Some(proxy_url) => Self::client_with_proxy(f, proxy_url.as_str()),
+            None => Self::client(f),
+        };
+        let result = client
             .bearer_auth(self.api_key.key())
             .post()
             .json(&request)
             .handle_event()
             .map_err(|e| GptClientError {
                 message: "Cause Error at GptClient::chat".to_string(),
-                kind: GptClientErrorKind::RequestError("".to_string()),
+                kind: GptClientErrorKind::RequestError(e.to_string()),
             })?;
         match result {
             SseResult::Continue => Ok("".to_string()),
@@ -89,6 +98,14 @@ impl GptClient {
             messages,
             stream: true,
         }
+    }
+    fn client_with_proxy<F: Fn(&str) -> ()>(
+        f: F,
+        proxy_url: impl Into<String>,
+    ) -> SseClient<ChatHandler<F>, ChatErrorHandler, ChatResponse> {
+        SseClient::new(Self::URL, ChatHandler::new(f), ChatErrorHandler::new())
+            .unwrap()
+            .set_proxy_url(proxy_url.into().as_str())
     }
     fn client<F: Fn(&str) -> ()>(
         f: F,
@@ -155,7 +172,6 @@ impl ErrorHandler<ChatResponse> for ChatErrorHandler {
             rsse::SseHandlerError::HttpResponseError {
                 message,
                 read_line,
-                request,
                 response,
             } => {
                 if *err_counter > 3 {
