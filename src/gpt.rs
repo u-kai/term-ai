@@ -7,6 +7,7 @@ use std::{
 use rsse::{ErrorHandler, EventHandler, SseClient, SseResult};
 
 pub struct GptClient {
+    proxy_url: Option<String>,
     api_key: OpenAIKey,
     history: ChatHistory,
 }
@@ -14,8 +15,22 @@ pub struct GptClient {
 impl GptClient {
     const URL: &'static str = "https://api.openai.com/v1/chat/completions";
     pub fn from_env() -> Result<Self> {
+        let proxy = match std::env::var("HTTPS_PROXY") {
+            Ok(proxy) => Some(proxy),
+            Err(_) => match std::env::var("https_proxy") {
+                Ok(proxy) => Some(proxy),
+                Err(_) => match std::env::var("HTTP_PROXY") {
+                    Ok(proxy) => Some(proxy),
+                    Err(_) => match std::env::var("http_proxy") {
+                        Ok(proxy) => Some(proxy),
+                        Err(_) => None,
+                    },
+                },
+            },
+        };
         match std::env::var("OPENAI_API_KEY") {
             Ok(api_key) => Ok(Self {
+                proxy_url: proxy,
                 api_key: OpenAIKey::new(api_key),
                 history: ChatHistory::new(),
             }),
@@ -25,10 +40,13 @@ impl GptClient {
             }),
         }
     }
+    pub fn set_proxy(&mut self, proxy_url: impl Into<String>) {
+        self.proxy_url = Some(proxy_url.into());
+    }
     pub fn repl_gpt3_5_with_first_command(&mut self, message: &str) -> Result<()> {
         println!("setting gpt3...");
         let model = OpenAIModel::Gpt3Dot5Turbo;
-        self.chat(model, message, &|_event| {})?;
+        self.chat(model, Role::System, message, &|_event| {})?;
         println!("start conversation");
         self.repl_gpt3_5()
     }
@@ -53,42 +71,55 @@ impl GptClient {
         message: impl Into<String>,
         f: &F,
     ) -> Result<String> {
-        self.chat(OpenAIModel::Gpt3Dot5Turbo, message, f)
+        self.chat(OpenAIModel::Gpt3Dot5Turbo, Role::User, message, f)
     }
     pub fn chat<F: Fn(&str) -> ()>(
         &mut self,
         model: OpenAIModel,
+        role: Role,
         message: impl Into<String>,
         f: &F,
     ) -> Result<String> {
         let message: String = message.into();
-        self.history.push_request(message.as_str());
+        self.history.push_request(message.clone(), role);
         let request = self.make_stream_request(model);
-        let result = Self::client(f)
+        let client = match &self.proxy_url {
+            Some(proxy_url) => Self::client_with_proxy(f, proxy_url.as_str()),
+            None => Self::client(f),
+        };
+        let result = client
             .bearer_auth(self.api_key.key())
             .post()
             .json(&request)
             .handle_event()
             .map_err(|e| GptClientError {
                 message: "Cause Error at GptClient::chat".to_string(),
-                kind: GptClientErrorKind::RequestError("".to_string()),
+                kind: GptClientErrorKind::RequestError(e.to_string()),
             })?;
         match result {
             SseResult::Continue => Ok("".to_string()),
-            SseResult::Retry => self.chat(model, message, f),
+            SseResult::Retry => self.chat(model, Role::User, message, f),
             SseResult::Finished(c) => {
                 self.history.push_response(c);
                 Ok(self.history.last_response().unwrap().to_string())
             }
         }
     }
-    fn make_stream_request(&self, model: OpenAIModel) -> ChatRequest {
+    fn make_stream_request(&mut self, model: OpenAIModel) -> ChatRequest {
         let messages = self.history.inner.clone();
         ChatRequest {
             model,
             messages,
             stream: true,
         }
+    }
+    fn client_with_proxy<F: Fn(&str) -> ()>(
+        f: F,
+        proxy_url: impl Into<String>,
+    ) -> SseClient<ChatHandler<F>, ChatErrorHandler, ChatResponse> {
+        SseClient::new(Self::URL, ChatHandler::new(f), ChatErrorHandler::new())
+            .unwrap()
+            .set_proxy_url(proxy_url.into().as_str())
     }
     fn client<F: Fn(&str) -> ()>(
         f: F,
@@ -155,7 +186,6 @@ impl ErrorHandler<ChatResponse> for ChatErrorHandler {
             rsse::SseHandlerError::HttpResponseError {
                 message,
                 read_line,
-                request,
                 response,
             } => {
                 if *err_counter > 3 {
@@ -270,9 +300,9 @@ impl ChatHistory {
             content: message.0,
         });
     }
-    fn push_request(&mut self, message: impl Into<String>) {
+    fn push_request(&mut self, message: impl Into<String>, role: Role) {
         self.inner.push(Message {
-            role: Role::User,
+            role,
             content: message.into(),
         });
     }
@@ -329,12 +359,14 @@ pub struct Message {
 #[derive(Debug, Clone, serde::Deserialize, PartialEq, Eq)]
 pub enum Role {
     User,
+    System,
     Assistant,
 }
 impl Role {
     fn into_str(&self) -> &'static str {
         match self {
             Self::User => "user",
+            Self::System => "system",
             Self::Assistant => "assistant",
         }
     }
