@@ -6,6 +6,7 @@ use std::{
 
 use rsse::{ErrorHandler, EventHandler, SseClient, SseResult};
 
+#[derive(Debug, Clone)]
 pub struct GptClient {
     proxy_url: Option<String>,
     api_key: OpenAIKey,
@@ -321,8 +322,9 @@ impl ChatStream {
         self.0.push_str(message);
     }
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct ChatResponse(String);
+#[derive(Clone)]
 struct OpenAIKey(String);
 
 impl OpenAIKey {
