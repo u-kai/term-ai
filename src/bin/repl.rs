@@ -5,6 +5,6 @@ fn main() {
     chat.add("Hello, I am GPT-3. How are you?");
     chat.add("I am doing well. How are you?");
     chat.add("I am doing well. How are you?");
-    let repl = GptRepl::new(chat);
+    let mut repl = GptRepl::new(chat);
     repl.repl();
 }

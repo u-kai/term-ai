@@ -1,18 +1,20 @@
 use std::{cell::RefCell, io::Write};
 
+use crate::gpt::{GptClient, OpenAIModel, Role};
+
 pub struct GptRepl<T: Chat> {
     chat: T,
     user: String,
 }
 
 pub trait Chat {
-    fn chat<F>(&self, message: &str, f: &F) -> ()
+    fn chat<F>(&mut self, message: &str, f: &F) -> ()
     where
         F: Fn(&str);
 }
 
 pub struct StubChat {
-    count: RefCell<usize>,
+    count: usize,
     messages: Vec<String>,
 }
 
@@ -20,7 +22,7 @@ impl StubChat {
     pub fn new() -> Self {
         StubChat {
             messages: Vec::new(),
-            count: RefCell::new(0),
+            count: 0,
         }
     }
     pub fn add(&mut self, message: impl Into<String>) {
@@ -29,18 +31,33 @@ impl StubChat {
 }
 
 impl Chat for StubChat {
-    fn chat<F>(&self, message: &str, f: &F) -> ()
+    fn chat<F>(&mut self, message: &str, f: &F) -> ()
     where
         F: Fn(&str),
     {
-        let index = self.count.borrow().clone();
+        let index = self.count;
         match self.messages.get(index) {
             Some(message) => {
                 f(message);
-                *self.count.borrow_mut() += 1;
+                self.count += 1;
             }
             None => f(message),
         }
+    }
+}
+
+pub struct GptChat {
+    client: GptClient,
+}
+
+impl Chat for GptChat {
+    fn chat<F>(&mut self, message: &str, f: &F) -> ()
+    where
+        F: Fn(&str),
+    {
+        self.client
+            .chat(OpenAIModel::Gpt3Dot5Turbo, Role::User, message, f)
+            .unwrap();
     }
 }
 
@@ -52,20 +69,20 @@ impl<T: Chat> GptRepl<T> {
         }
     }
 
-    pub fn repl(&self) -> () {
+    pub fn repl(&mut self) -> () {
         loop {
             self.user_first();
-            let message = self.user_input();
+            let message = Self::user_input();
             self.gpt_first();
-            self.chat.chat(&message, &|event| self.gpt_message(event));
-            self.gpt_finish();
+            self.chat.chat(&message, &|event| Self::gpt_message(event));
+            Self::gpt_finish();
         }
     }
     fn user_first(&self) {
         print!("{} > ", self.user);
         std::io::stdout().flush().unwrap();
     }
-    fn user_input(&self) -> String {
+    fn user_input() -> String {
         let mut message = String::new();
         std::io::stdin().read_line(&mut message).unwrap();
         message
@@ -74,11 +91,11 @@ impl<T: Chat> GptRepl<T> {
         print!("gpt > ");
         std::io::stdout().flush().unwrap();
     }
-    fn gpt_message(&self, message: &str) {
+    fn gpt_message(message: &str) {
         print!("{}", message);
         std::io::stdout().flush().unwrap();
     }
-    fn gpt_finish(&self) {
+    fn gpt_finish() {
         println!();
     }
 }
