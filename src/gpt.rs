@@ -16,22 +16,9 @@ pub struct GptClient {
 impl GptClient {
     const URL: &'static str = "https://api.openai.com/v1/chat/completions";
     pub fn from_env() -> Result<Self> {
-        let proxy = match std::env::var("HTTPS_PROXY") {
-            Ok(proxy) => Some(proxy),
-            Err(_) => match std::env::var("https_proxy") {
-                Ok(proxy) => Some(proxy),
-                Err(_) => match std::env::var("HTTP_PROXY") {
-                    Ok(proxy) => Some(proxy),
-                    Err(_) => match std::env::var("http_proxy") {
-                        Ok(proxy) => Some(proxy),
-                        Err(_) => None,
-                    },
-                },
-            },
-        };
         match std::env::var("OPENAI_API_KEY") {
             Ok(api_key) => Ok(Self {
-                proxy_url: proxy,
+                proxy_url: proxy_from_env(),
                 api_key: OpenAIKey::new(api_key),
                 history: ChatHistory::new(),
             }),
@@ -418,5 +405,21 @@ impl OpenAIModel {
 impl Into<&'static str> for OpenAIModel {
     fn into(self) -> &'static str {
         self.into_str()
+    }
+}
+
+fn proxy_from_env() -> Option<String> {
+    match std::env::var("HTTPS_PROXY") {
+        Ok(proxy) => Some(proxy),
+        Err(_) => match std::env::var("https_proxy") {
+            Ok(proxy) => Some(proxy),
+            Err(_) => match std::env::var("HTTP_PROXY") {
+                Ok(proxy) => Some(proxy),
+                Err(_) => match std::env::var("http_proxy") {
+                    Ok(proxy) => Some(proxy),
+                    Err(_) => None,
+                },
+            },
+        },
     }
 }

@@ -1,82 +1,81 @@
-use std::{cell::RefCell, io::Write};
+use std::io::Write;
 
-use crate::gpt::{GptClient, OpenAIModel, Role};
+use crate::gpt::{GptClient, GptClientError, OpenAIModel, Role};
 
-pub struct GptRepl<T: Chat> {
+pub struct GptRepl<E: std::error::Error, T: MessageHandler<E>> {
     chat: T,
     user: String,
+    display_gpt: String,
+    _phantom: std::marker::PhantomData<E>,
 }
 
-pub trait Chat {
-    fn chat<F>(&mut self, message: &str, f: &F) -> ()
+pub trait MessageHandler<E: std::error::Error> {
+    fn handle<F>(&mut self, message: &str, f: &F) -> Result<(), E>
     where
         F: Fn(&str);
 }
 
-pub struct StubChat {
-    count: usize,
-    messages: Vec<String>,
-}
-
-impl StubChat {
-    pub fn new() -> Self {
-        StubChat {
-            messages: Vec::new(),
-            count: 0,
-        }
-    }
-    pub fn add(&mut self, message: impl Into<String>) {
-        self.messages.push(message.into());
-    }
-}
-
-impl Chat for StubChat {
-    fn chat<F>(&mut self, message: &str, f: &F) -> ()
-    where
-        F: Fn(&str),
-    {
-        let index = self.count;
-        match self.messages.get(index) {
-            Some(message) => {
-                f(message);
-                self.count += 1;
-            }
-            None => f(message),
-        }
-    }
-}
-
 pub struct GptChat {
+    model: OpenAIModel,
     client: GptClient,
 }
 
-impl Chat for GptChat {
-    fn chat<F>(&mut self, message: &str, f: &F) -> ()
-    where
-        F: Fn(&str),
-    {
+impl GptChat {
+    pub fn from_env(model: OpenAIModel) -> Result<Self, crate::gpt::GptClientError> {
+        let client = GptClient::from_env()?;
+        Ok(Self { client, model })
+    }
+    pub fn first_command(&mut self, message: &str) -> () {
         self.client
-            .chat(OpenAIModel::Gpt3Dot5Turbo, Role::User, message, f)
+            .chat(self.model, Role::System, message, &|_event| ())
             .unwrap();
     }
 }
+impl MessageHandler<GptClientError> for GptChat {
+    fn handle<F>(&mut self, message: &str, f: &F) -> Result<(), GptClientError>
+    where
+        F: Fn(&str),
+    {
+        self.client.chat(self.model, Role::User, message, f)?;
+        Ok(())
+    }
+}
 
-impl<T: Chat> GptRepl<T> {
+impl GptRepl<GptClientError, GptChat> {
+    pub fn from_env(model: OpenAIModel) -> Result<Self, crate::gpt::GptClientError> {
+        let chat = GptChat::from_env(model)?;
+        Ok(Self::new(chat))
+    }
+}
+
+impl<E: std::error::Error, T: MessageHandler<E>> GptRepl<E, T> {
     pub fn new(c: T) -> Self {
         GptRepl {
             chat: c,
+            display_gpt: std::env::var("DISPLAY_GPT").unwrap_or("gpt".to_string()),
             user: std::env::var("USER").unwrap_or("you".to_string()),
+            _phantom: std::marker::PhantomData,
         }
     }
 
-    pub fn repl(&mut self) -> () {
+    pub fn repl(&mut self) -> Result<(), E> {
         loop {
             self.user_first();
             let message = Self::user_input();
+            if Self::is_exit(&message) {
+                return Ok(());
+            }
             self.gpt_first();
-            self.chat.chat(&message, &|event| Self::gpt_message(event));
+            self.chat
+                .handle(&message, &|event| Self::gpt_message(event))?;
             Self::gpt_finish();
         }
+    }
+    pub fn set_user_name(&mut self, name: &str) {
+        self.user = name.to_string();
+    }
+    pub fn set_gpt_display(&mut self, name: &str) {
+        self.display_gpt = name.to_string();
     }
     fn user_first(&self) {
         print!("{} > ", self.user);
@@ -87,8 +86,11 @@ impl<T: Chat> GptRepl<T> {
         std::io::stdin().read_line(&mut message).unwrap();
         message
     }
+    fn is_exit(message: &str) -> bool {
+        message == "exit\n"
+    }
     fn gpt_first(&self) {
-        print!("gpt > ");
+        print!("{} > ", self.display_gpt);
         std::io::stdout().flush().unwrap();
     }
     fn gpt_message(message: &str) {

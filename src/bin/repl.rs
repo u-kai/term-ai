@@ -1,10 +1,9 @@
-use term_ai::repl::{GptRepl, StubChat};
+use term_ai::{
+    gpt::OpenAIModel,
+    repl::{GptChat, GptRepl},
+};
 
 fn main() {
-    let mut chat = StubChat::new();
-    chat.add("Hello, I am GPT-3. How are you?");
-    chat.add("I am doing well. How are you?");
-    chat.add("I am doing well. How are you?");
-    let mut repl = GptRepl::new(chat);
-    repl.repl();
+    let mut gpt = GptRepl::new(GptChat::from_env(OpenAIModel::Gpt3Dot5Turbo).unwrap());
+    gpt.repl().unwrap();
 }

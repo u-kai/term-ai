@@ -1,14 +1,27 @@
-use std::{
-    fs::File,
-    io::{Read, Write},
-    path::Path,
-};
+use std::{fs::File, io::Read, path::Path};
 
-use crate::gpt::{GptClient, GptClientError, OpenAIModel, Role};
+use crate::{
+    gpt::{GptClient, GptClientError, OpenAIModel, Role},
+    repl::MessageHandler,
+};
 
 #[derive(Debug, Clone)]
 pub struct CodeReviewer {
     gpt: GptClient,
+}
+
+impl MessageHandler<GptClientError> for CodeReviewer {
+    fn handle<F>(&mut self, message: &str, f: &F) -> Result<(), GptClientError>
+    where
+        F: Fn(&str) -> (),
+    {
+        let mut message = message.trim().to_string();
+        if is_file_path(&message) {
+            Self::path_to_code_review_request(&mut message);
+        }
+        self.review(OpenAIModel::Gpt3Dot5Turbo, &message, f)?;
+        Ok(())
+    }
 }
 
 impl CodeReviewer {
@@ -16,33 +29,6 @@ impl CodeReviewer {
     pub fn from_env() -> Result<Self, GptClientError> {
         let gpt = GptClient::from_env()?;
         Ok(Self { gpt })
-    }
-
-    pub fn repl_gpt3_5(&mut self) -> Result<(), GptClientError> {
-        let user = std::env::var("USER").unwrap_or("you".to_string());
-        loop {
-            let mut message = String::new();
-            print!("{} > ", user);
-            std::io::stdout().flush().unwrap();
-            std::io::stdin().read_line(&mut message).unwrap();
-            if message.trim() == "exit" {
-                return Ok(());
-            }
-            if is_file_path(&message.trim()) {
-                let mut file = File::open(message.trim()).unwrap();
-                let mut code = String::new();
-                file.read_to_string(&mut code).unwrap();
-                message = format!("{}\n{}", Self::PREFIX, code);
-            }
-            print!("gpt > ");
-            std::io::stdout().flush().unwrap();
-            self.review(OpenAIModel::Gpt3Dot5Turbo, &message, &|event| {
-                print!("{}", event);
-                std::io::stdout().flush().unwrap();
-            })?;
-            println!();
-            message.clear();
-        }
     }
     pub fn review<F: Fn(&str)>(
         &mut self,
@@ -52,6 +38,14 @@ impl CodeReviewer {
     ) -> Result<String, GptClientError> {
         let response = self.gpt.chat(model, Role::User, code, f)?;
         Ok(response)
+    }
+    fn path_to_code_review_request(path: &mut String) {
+        if is_file_path(&path) {
+            let mut file = File::open(&path).unwrap();
+            let mut code = String::new();
+            file.read_to_string(&mut code).unwrap();
+            *path = format!("{}\n{}", Self::PREFIX, code);
+        }
     }
 }
 

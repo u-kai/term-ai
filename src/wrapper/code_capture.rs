@@ -16,7 +16,7 @@ impl CodeCaptureGpt {
             code_capture: RefCell::new(CodeCapture::new()),
         })
     }
-    pub fn repl(&mut self, filename: &str) -> Result<(), GptClientError> {
+    pub fn repl(&mut self) -> Result<(), GptClientError> {
         let user = std::env::var("USER").unwrap_or("you".to_string());
         loop {
             let mut message = String::new();
@@ -28,11 +28,7 @@ impl CodeCaptureGpt {
             }
             print!("gpt > ");
             std::io::stdout().flush().unwrap();
-            self.chat_and_capture_code_to_file(
-                OpenAIModel::Gpt3Dot5Turbo,
-                message.as_str(),
-                filename,
-            )?;
+            self.chat_and_capture_code_to_file(OpenAIModel::Gpt3Dot5Turbo, message.as_str(), "")?;
             println!();
             if let Some(code) = self.code_capture.borrow().code() {
                 println!("code: \n{:#?}", code.code);
