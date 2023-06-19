@@ -31,36 +31,6 @@ impl GptClient {
     pub fn set_proxy(&mut self, proxy_url: impl Into<String>) {
         self.proxy_url = Some(proxy_url.into());
     }
-    pub fn repl_gpt3_5_with_first_command(&mut self, message: &str) -> Result<()> {
-        println!("setting gpt3...");
-        let model = OpenAIModel::Gpt3Dot5Turbo;
-        self.chat(model, Role::System, message, &|_event| {})?;
-        println!("start conversation");
-        self.repl_gpt3_5()
-    }
-    pub fn repl_gpt3_5(&mut self) -> Result<()> {
-        let user = std::env::var("USER").unwrap_or("you".to_string());
-        loop {
-            let mut message = String::new();
-            print!("{} > ", user);
-            std::io::stdout().flush().unwrap();
-            std::io::stdin().read_line(&mut message).unwrap();
-            print!("gpt > ");
-            std::io::stdout().flush().unwrap();
-            self.gpt3_5(&message, &|event| {
-                print!("{}", event);
-                std::io::stdout().flush().unwrap();
-            })?;
-            println!();
-        }
-    }
-    pub fn gpt3_5<F: Fn(&str) -> ()>(
-        &mut self,
-        message: impl Into<String>,
-        f: &F,
-    ) -> Result<String> {
-        self.chat(OpenAIModel::Gpt3Dot5Turbo, Role::User, message, f)
-    }
     pub fn chat<F: Fn(&str) -> ()>(
         &mut self,
         model: OpenAIModel,

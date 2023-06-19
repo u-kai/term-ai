@@ -25,11 +25,6 @@ impl GptChat {
         let client = GptClient::from_env()?;
         Ok(Self { client, model })
     }
-    pub fn first_command(&mut self, message: &str) -> () {
-        self.client
-            .chat(self.model, Role::System, message, &|_event| ())
-            .unwrap();
-    }
 }
 impl MessageHandler<GptClientError> for GptChat {
     fn handle<F>(&mut self, message: &str, f: &F) -> Result<(), GptClientError>
