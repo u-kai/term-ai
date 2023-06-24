@@ -2,7 +2,7 @@ use std::{fs::File, io::Read, path::Path};
 
 use crate::{
     gpt::{GptClient, GptClientError, OpenAIModel, Role},
-    repl::MessageHandler,
+    repl::GptMessageHandler,
 };
 
 #[derive(Debug, Clone)]
@@ -10,7 +10,7 @@ pub struct CodeReviewer {
     gpt: GptClient,
 }
 
-impl MessageHandler<GptClientError> for CodeReviewer {
+impl GptMessageHandler<GptClientError> for CodeReviewer {
     fn handle<F>(&mut self, message: &str, f: &F) -> Result<(), GptClientError>
     where
         F: Fn(&str) -> (),

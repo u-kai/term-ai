@@ -4,7 +4,7 @@ use rand::Rng;
 
 use crate::{
     gpt::{GptClient, GptClientError, OpenAIModel, Role},
-    repl::MessageHandler,
+    repl::GptMessageHandler,
 };
 
 pub struct SampleFileMaker {
@@ -51,7 +51,7 @@ pub struct CodeCaptureGpt<W: CodeWriter> {
     w: W,
 }
 
-impl<W: CodeWriter> MessageHandler<GptClientError> for CodeCaptureGpt<W> {
+impl<W: CodeWriter> GptMessageHandler<GptClientError> for CodeCaptureGpt<W> {
     fn handle<F>(&mut self, message: &str, f: &F) -> Result<(), GptClientError>
     where
         F: Fn(&str) -> (),

@@ -2,14 +2,14 @@ use std::io::Write;
 
 use crate::gpt::{GptClient, GptClientError, OpenAIModel, Role};
 
-pub struct GptRepl<E: std::error::Error, T: MessageHandler<E>> {
+pub struct GptRepl<E: std::error::Error, T: GptMessageHandler<E>> {
     chat: T,
     user: String,
     display_gpt: String,
     _phantom: std::marker::PhantomData<E>,
 }
 
-pub trait MessageHandler<E: std::error::Error> {
+pub trait GptMessageHandler<E: std::error::Error> {
     fn handle<F>(&mut self, message: &str, f: &F) -> Result<(), E>
     where
         F: Fn(&str);
@@ -26,7 +26,7 @@ impl GptChat {
         Ok(Self { client, model })
     }
 }
-impl MessageHandler<GptClientError> for GptChat {
+impl GptMessageHandler<GptClientError> for GptChat {
     fn handle<F>(&mut self, message: &str, f: &F) -> Result<(), GptClientError>
     where
         F: Fn(&str),
@@ -43,7 +43,7 @@ impl GptRepl<GptClientError, GptChat> {
     }
 }
 
-impl<E: std::error::Error, T: MessageHandler<E>> GptRepl<E, T> {
+impl<E: std::error::Error, T: GptMessageHandler<E>> GptRepl<E, T> {
     pub fn new(c: T) -> Self {
         GptRepl {
             chat: c,

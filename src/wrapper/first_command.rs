@@ -1,6 +1,6 @@
 use crate::{
     gpt::{GptClient, GptClientError},
-    repl::MessageHandler,
+    repl::GptMessageHandler,
 };
 
 pub struct FirstSystemCommand {
@@ -8,7 +8,7 @@ pub struct FirstSystemCommand {
     client: GptClient,
 }
 
-impl MessageHandler<GptClientError> for FirstSystemCommand {
+impl GptMessageHandler<GptClientError> for FirstSystemCommand {
     fn handle<F>(&mut self, message: &str, f: &F) -> Result<(), GptClientError>
     where
         F: Fn(&str),
