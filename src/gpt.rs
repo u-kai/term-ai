@@ -1,7 +1,6 @@
 use std::{
     cell::RefCell,
     fmt::{Debug, Display},
-    io::Write,
 };
 
 use rsse::{ErrorHandler, EventHandler, SseClient, SseResult};

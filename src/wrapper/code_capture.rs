@@ -1,53 +1,46 @@
 use std::{cell::RefCell, io::Write};
 
-use crate::gpt::{GptClient, GptClientError, OpenAIModel, Role};
+use crate::{
+    gpt::{GptClient, GptClientError, OpenAIModel, Role},
+    repl::MessageHandler,
+};
 
 #[derive(Debug, Clone)]
-pub struct CodeCaptureGpt {
+pub struct CodeCaptureGpt<W: Write> {
     gpt: GptClient,
     code_capture: RefCell<CodeCapture>,
+    w: W,
 }
 
-impl CodeCaptureGpt {
-    pub fn from_env() -> Result<Self, GptClientError> {
-        let gpt = GptClient::from_env()?;
+impl<W: Write> MessageHandler<GptClientError> for CodeCaptureGpt<W> {
+    fn handle<F>(&mut self, message: &str, f: &F) -> Result<(), GptClientError>
+    where
+        F: Fn(&str) -> (),
+    {
+        self.gpt
+            .chat(OpenAIModel::Gpt3Dot5Turbo, Role::User, message, &|event| {
+                self.code_capture.borrow_mut().add(event);
+                f(event);
+            })?;
+        let codes = self.code_capture.borrow().get_codes();
+        codes.into_iter().for_each(|code| {
+            self.w.write_all(code.code.as_bytes()).unwrap();
+            self.w.flush().unwrap();
+        });
+        Ok(())
+    }
+}
+
+impl<W: Write> CodeCaptureGpt<W> {
+    pub fn from_env(w: W) -> Result<Self, GptClientError> {
+        let mut gpt = GptClient::from_env()?;
+        gpt.chat(OpenAIModel::Gpt3Dot5Turbo, Role::System, "私がお願いするプログラミングの記述に対するレスポンスは全て```プログラミング言語名で初めて表現してください", &|_| {})?;
+        // set first command for system
         Ok(Self {
             gpt,
             code_capture: RefCell::new(CodeCapture::new()),
+            w,
         })
-    }
-    pub fn repl(&mut self) -> Result<(), GptClientError> {
-        let user = std::env::var("USER").unwrap_or("you".to_string());
-        loop {
-            let mut message = String::new();
-            print!("{} > ", user);
-            std::io::stdout().flush().unwrap();
-            std::io::stdin().read_line(&mut message).unwrap();
-            if message.trim() == "exit" {
-                return Ok(());
-            }
-            print!("gpt > ");
-            std::io::stdout().flush().unwrap();
-            self.chat_and_capture_code_to_file(OpenAIModel::Gpt3Dot5Turbo, message.as_str(), "")?;
-            println!();
-            if let Some(code) = self.code_capture.borrow().code() {
-                println!("code: \n{:#?}", code.code);
-            }
-            message.clear();
-        }
-    }
-    pub fn chat_and_capture_code_to_file(
-        &mut self,
-        model: OpenAIModel,
-        message: &str,
-        filename: &str,
-    ) -> Result<(), GptClientError> {
-        self.gpt.chat(model, Role::User, message, &|event| {
-            self.code_capture.borrow_mut().add(event);
-            print!("{}", event);
-            std::io::stdout().flush().unwrap();
-        })?;
-        Ok(())
     }
 }
 
@@ -64,25 +57,26 @@ impl CodeCapture {
     pub fn add(&mut self, line: &str) {
         self.inner.push_str(line);
     }
-    pub fn code(&self) -> Option<Code> {
-        let mut chars = self.inner.chars().skip_while(|c| c != &'`');
-        let (Some('`'), Some('`'),Some('`')) = (chars.next(),chars.next(), chars.next()) else {
-            return None;
-        };
-        // not reach code
-        if !chars.clone().any(|c| c == '\n') {
-            return None;
+    pub fn get_codes(&self) -> Vec<Code> {
+        let mut other_and_codes_other = self.inner.split("```");
+        if other_and_codes_other.next().is_none() {
+            return vec![];
         }
-        let lang = chars
-            .by_ref()
-            .take_while(|c| c != &'\n')
-            .collect::<String>();
-        let code = chars.collect::<String>();
-        let code = code.split("```").next()?;
-        Some(Code {
-            code: code.to_string(),
-            lang: Lang::from_str(lang.as_str())?,
-        })
+        // code,code,code
+        other_and_codes_other
+            .filter_map(|lang_and_codes| {
+                let mut lang_and_code = lang_and_codes.splitn(2, "\n");
+                let Some(lang) = lang_and_code.next() else {
+                    return None;
+                };
+                let lang = Lang::from_str(lang);
+                let code = lang_and_code.collect::<String>();
+                if code == "" {
+                    return None;
+                }
+                Some(Code { code, lang })
+            })
+            .collect()
     }
 }
 
@@ -95,12 +89,13 @@ pub struct Code {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Lang {
     Rust,
+    None,
 }
 impl Lang {
-    fn from_str(s: &str) -> Option<Self> {
+    fn from_str(s: &str) -> Self {
         match s {
-            "rust" => Some(Self::Rust),
-            _ => None,
+            "rust" => Self::Rust,
+            _ => Self::None,
         }
     }
 }
@@ -109,31 +104,71 @@ impl Lang {
 mod tests {
     use super::*;
     #[test]
-    fn test_code_capture() {
+    fn test_code_capture_複数のコードに対しても動作する() {
         let mut sut = CodeCapture::new();
         let line = "以下のコードは，1から10までの整数の和を求めるプログラムです。";
         sut.add(line);
         let before_code = "`";
         sut.add(before_code);
         sut.add(before_code);
-        let code = "`ru";
+        let code = "`";
         sut.add(code);
-        let code = "st";
-        sut.add(code);
-        let code = "\n";
+        let code = "`\n";
         sut.add(code);
         let code = "print";
         sut.add(code);
         let code = "ln!(\"Hello, world!\");\n";
         sut.add(code);
+        assert_eq!(
+            sut.get_codes(),
+            vec![Code {
+                code: "println!(\"Hello, world!\");\n".to_string(),
+                lang: Lang::None,
+            }]
+        );
         let code = "```";
         sut.add(code);
         assert_eq!(
-            sut.code(),
-            Some(Code {
+            sut.get_codes(),
+            vec![Code {
                 code: "println!(\"Hello, world!\");\n".to_string(),
-                lang: Lang::Rust
-            })
+                lang: Lang::None,
+            }]
+        );
+        let line = "出力以下です\n";
+        sut.add(line);
+        let before_code = "`";
+        sut.add(before_code);
+        sut.add(before_code);
+        let code = "`";
+        sut.add(code);
+        let code = "`\n";
+        sut.add(code);
+        let code = "Hello,";
+        assert_eq!(
+            sut.get_codes(),
+            vec![Code {
+                code: "println!(\"Hello, world!\");\n".to_string(),
+                lang: Lang::None,
+            }]
+        );
+        sut.add(code);
+        let code = " world\n";
+        sut.add(code);
+        let code = "```";
+        sut.add(code);
+        assert_eq!(
+            sut.get_codes(),
+            vec![
+                Code {
+                    code: "println!(\"Hello, world!\");\n".to_string(),
+                    lang: Lang::None,
+                },
+                Code {
+                    code: "Hello, world\n".to_string(),
+                    lang: Lang::None,
+                }
+            ]
         );
     }
 }
