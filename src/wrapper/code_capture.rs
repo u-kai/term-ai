@@ -1,18 +1,57 @@
 use std::{cell::RefCell, io::Write};
 
+use rand::Rng;
+
 use crate::{
     gpt::{GptClient, GptClientError, OpenAIModel, Role},
     repl::MessageHandler,
 };
 
+pub struct SampleFileMaker {
+    rand: rand::rngs::ThreadRng,
+}
+
+impl SampleFileMaker {
+    const PREFIX: &'static str = "sample_for_gpt_";
+    pub fn new() -> Self {
+        Self {
+            rand: rand::thread_rng(),
+        }
+    }
+    fn make_filename(&mut self) -> String {
+        let mut file_name = String::from(Self::PREFIX);
+        for _ in 0..6 {
+            file_name.push((self.rand.gen_range(0..26) + 97) as u8 as char);
+        }
+        file_name
+    }
+}
+
+impl CodeWriter for SampleFileMaker {
+    fn write_all(&mut self, code: Code) -> Result<(), std::io::Error> {
+        let filename = if let Some(ex) = code.extends_str() {
+            format!("{}.{}", self.make_filename(), ex)
+        } else {
+            self.make_filename()
+        };
+        let mut file = std::fs::File::create(filename)?;
+        file.write_all(code.as_bytes())?;
+        Ok(())
+    }
+}
+
+pub trait CodeWriter {
+    fn write_all(&mut self, code: Code) -> Result<(), std::io::Error>;
+}
+
 #[derive(Debug, Clone)]
-pub struct CodeCaptureGpt<W: Write> {
+pub struct CodeCaptureGpt<W: CodeWriter> {
     gpt: GptClient,
     code_capture: RefCell<CodeCapture>,
     w: W,
 }
 
-impl<W: Write> MessageHandler<GptClientError> for CodeCaptureGpt<W> {
+impl<W: CodeWriter> MessageHandler<GptClientError> for CodeCaptureGpt<W> {
     fn handle<F>(&mut self, message: &str, f: &F) -> Result<(), GptClientError>
     where
         F: Fn(&str) -> (),
@@ -24,14 +63,13 @@ impl<W: Write> MessageHandler<GptClientError> for CodeCaptureGpt<W> {
             })?;
         let codes = self.code_capture.borrow().get_codes();
         codes.into_iter().for_each(|code| {
-            self.w.write_all(code.code.as_bytes()).unwrap();
-            self.w.flush().unwrap();
+            self.w.write_all(code).unwrap();
         });
         Ok(())
     }
 }
 
-impl<W: Write> CodeCaptureGpt<W> {
+impl<W: CodeWriter> CodeCaptureGpt<W> {
     pub fn from_env(w: W) -> Result<Self, GptClientError> {
         let mut gpt = GptClient::from_env()?;
         gpt.chat(OpenAIModel::Gpt3Dot5Turbo, Role::System, "私がお願いするプログラミングの記述に対するレスポンスは全て```プログラミング言語名で初めて表現してください", &|_| {})?;
@@ -96,15 +134,76 @@ pub struct Code {
     lang: Lang,
 }
 
+impl Code {
+    pub fn extends_str(&self) -> Option<&str> {
+        match self.lang {
+            Lang::None => None,
+            _ => Some(self.lang.to_extend()),
+        }
+    }
+    pub fn as_bytes(&self) -> &[u8] {
+        self.code.as_bytes()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Lang {
     Rust,
+    Python,
+    Go,
+    Java,
+    JavaScript,
+    TypeScript,
+    Ruby,
+    Bash,
+    Yaml,
+    Json,
     None,
 }
 impl Lang {
+    fn to_extend(&self) -> &str {
+        match self {
+            Self::Rust => "rs",
+            Self::Python => "py",
+            Self::Go => "go",
+            Self::Java => "java",
+            Self::JavaScript => "js",
+            Self::TypeScript => "ts",
+            Self::Ruby => "rb",
+            Self::Bash => "sh",
+            Self::Yaml => "yaml",
+            Self::Json => "json",
+            Self::None => "",
+        }
+    }
+    #[allow(dead_code)]
+    fn to_str(&self) -> &str {
+        match self {
+            Self::Rust => "rust",
+            Self::Python => "python",
+            Self::Go => "go",
+            Self::Java => "java",
+            Self::JavaScript => "javascript",
+            Self::TypeScript => "typescript",
+            Self::Ruby => "ruby",
+            Self::Bash => "bash",
+            Self::Yaml => "yaml",
+            Self::Json => "json",
+            Self::None => "",
+        }
+    }
     fn from_str(s: &str) -> Self {
         match s {
             "rust" => Self::Rust,
+            "python" => Self::Python,
+            "go" => Self::Go,
+            "java" => Self::Java,
+            "javascript" => Self::JavaScript,
+            "typescript" => Self::TypeScript,
+            "ruby" => Self::Ruby,
+            "sh" => Self::Bash,
+            "yaml" => Self::Yaml,
+            "json" => Self::Json,
             _ => Self::None,
         }
     }
