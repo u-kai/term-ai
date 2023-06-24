@@ -58,23 +58,33 @@ impl CodeCapture {
         self.inner.push_str(line);
     }
     pub fn get_codes(&self) -> Vec<Code> {
-        let mut other_and_codes_other = self.inner.split("```");
-        if other_and_codes_other.next().is_none() {
-            return vec![];
-        }
-        // code,code,code
-        other_and_codes_other
-            .filter_map(|lang_and_codes| {
-                let mut lang_and_code = lang_and_codes.splitn(2, "\n");
-                let Some(lang) = lang_and_code.next() else {
-                    return None;
-                };
-                let lang = Lang::from_str(lang);
-                let code = lang_and_code.collect::<String>();
-                if code == "" {
+        // init words
+        // lang and code
+        // empty or other
+        // lang and code
+        // ...
+        // empty or other
+        self.inner
+            .split("```")
+            .enumerate()
+            .filter_map(|(i, line)| {
+                if i % 2 == 0 {
                     return None;
                 }
-                Some(Code { code, lang })
+                let mut lang_and_code = line.splitn(2, "\n");
+                let Some(lang) = lang_and_code.next() else {
+                    // case output in progress
+                    // then None
+                    return None;
+                };
+                match lang_and_code.next() {
+                    // case code output is not yet
+                    Some("") | None => None,
+                    Some(code) => Some(Code {
+                        code: code.to_string(),
+                        lang: Lang::from_str(lang),
+                    }),
+                }
             })
             .collect()
     }
@@ -119,14 +129,7 @@ mod tests {
         sut.add(code);
         let code = "ln!(\"Hello, world!\");\n";
         sut.add(code);
-        assert_eq!(
-            sut.get_codes(),
-            vec![Code {
-                code: "println!(\"Hello, world!\");\n".to_string(),
-                lang: Lang::None,
-            }]
-        );
-        let code = "```";
+        let code = "```\n";
         sut.add(code);
         assert_eq!(
             sut.get_codes(),
@@ -156,6 +159,21 @@ mod tests {
         let code = " world\n";
         sut.add(code);
         let code = "```";
+        sut.add(code);
+        assert_eq!(
+            sut.get_codes(),
+            vec![
+                Code {
+                    code: "println!(\"Hello, world!\");\n".to_string(),
+                    lang: Lang::None,
+                },
+                Code {
+                    code: "Hello, world\n".to_string(),
+                    lang: Lang::None,
+                }
+            ]
+        );
+        let code = "\nthis code is simple code\n";
         sut.add(code);
         assert_eq!(
             sut.get_codes(),
