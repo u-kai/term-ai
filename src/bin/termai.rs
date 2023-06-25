@@ -1,6 +1,6 @@
 use term_ai::cli::TermAi;
 
 fn main() {
-    let gpt = TermAi::new();
-    gpt.run();
+    let term_ai = TermAi::new();
+    term_ai.run();
 }

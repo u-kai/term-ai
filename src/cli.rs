@@ -7,6 +7,7 @@ use crate::{
         code_capture::{CodeCaptureGpt, SampleFileMaker},
         code_reviewer::CodeReviewer,
         first_command::FirstSystemCommand,
+        speaker::Speaker,
     },
 };
 #[derive(Parser)]
@@ -48,6 +49,12 @@ impl TermAi {
                 self.set_option(&mut gpt, option);
                 gpt.repl().unwrap();
             }
+            Sub::Speaker(option) => {
+                Self::print_init("Speaker");
+                let mut gpt = GptRepl::new(Speaker::from_env().unwrap());
+                self.set_option(&mut gpt, option);
+                gpt.repl().unwrap();
+            }
         }
     }
     fn print_init(client: &str) {
@@ -83,6 +90,8 @@ enum Sub {
         about = "capture your code and dist to sample_for_gpt_xxxxxx.LANG"
     )]
     Capture(CommandOption),
+    #[cfg(target_os = "macos")]
+    Speaker(CommandOption),
 }
 
 #[derive(Debug, clap::Args)]
