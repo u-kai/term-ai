@@ -63,6 +63,8 @@ impl<E: std::error::Error, T: GptMessageHandler<E>> GptRepl<E, T> {
             self.gpt_first();
             self.chat
                 .handle(&message, &|event| Self::gpt_message(event))?;
+            // If above line process is heavy,I would like to proceed first below
+            // It may be necessary to have an input that can receive the results of parallel processing.
             Self::gpt_finish();
         }
     }
