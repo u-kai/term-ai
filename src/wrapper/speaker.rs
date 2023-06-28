@@ -10,7 +10,6 @@ use crate::{
 pub struct Speaker {
     model: crate::gpt::OpenAIModel,
     client: GptClient,
-    default: MacSayCommandSpeaker,
 }
 
 impl GptMessageHandler<GptClientError> for Speaker {
@@ -26,12 +25,7 @@ impl Speaker {
     pub fn from_env() -> Result<Self, crate::gpt::GptClientError> {
         let client = GptClient::from_env()?;
         let model = crate::gpt::OpenAIModel::Gpt3Dot5Turbo;
-        let default = MacSayCommandSpeaker::from_env();
-        Ok(Self {
-            client,
-            model,
-            default,
-        })
+        Ok(Self { client, model })
     }
     pub fn say<F: Fn(&str)>(
         &mut self,
@@ -41,14 +35,28 @@ impl Speaker {
         let result = self
             .client
             .chat(self.model, crate::gpt::Role::System, message, f)?;
-        let result = Command::new("say")
-            .args(["-v", self.default.to_name(), result.as_str()].iter())
-            .output()
-            .unwrap();
-        if !result.status.success() {
-            panic!("failed to execute process: {}", result.status);
-        }
+        multi_lang_say(result.as_str());
         Ok(())
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn multi_lang_say(message: &str) {
+    MultiLangSentence::from(message)
+        .iter()
+        .for_each(|s| match s {
+            MultiLang::Japanese(s) => say_command(s, &MacSayCommandSpeaker::Kyoko),
+            MultiLang::English(s) => say_command(s, &MacSayCommandSpeaker::Karen),
+        });
+}
+#[cfg(target_os = "macos")]
+fn say_command(message: &str, speaker: &MacSayCommandSpeaker) {
+    let result = Command::new("say")
+        .args(["-v", speaker.to_name(), message])
+        .output()
+        .unwrap();
+    if !result.status.success() {
+        panic!("failed to execute process: {}", result.status);
     }
 }
 
@@ -60,17 +68,6 @@ pub enum MacSayCommandSpeaker {
 }
 
 impl MacSayCommandSpeaker {
-    fn from_env() -> Self {
-        match std::env::var("MAC_SAY_COMMAND_SPEAKER") {
-            Ok(speaker) => match speaker.as_str() {
-                "Karen" => Self::Karen,
-                "Tessa" => Self::Tessa,
-                "Kyoko" => Self::Kyoko,
-                _ => Self::Karen,
-            },
-            Err(_) => Self::Karen,
-        }
-    }
     fn to_name(&self) -> &'static str {
         match self {
             Self::Karen => "Karen",
@@ -102,6 +99,9 @@ impl MultiLangSentence {
             };
         });
         Self { inner }
+    }
+    pub fn iter(&self) -> impl Iterator<Item = &MultiLang> {
+        self.inner.iter()
     }
     pub fn to_string(&self) -> String {
         self.inner
