@@ -88,21 +88,19 @@ pub struct MultiLangSentence {
 impl MultiLangSentence {
     pub fn from(src: &str) -> Self {
         let mut inner = vec![];
-        let mut english = String::new();
-        let mut japanese = String::new();
-        for c in src.chars() {
-            if c.is_ascii() {
-                english.push(c);
+        let mut chars = src.chars();
+        let first = chars.next();
+        let Some(first) = first else {
+            return Self { inner };
+        };
+        inner.push(MultiLang::from_char(first));
+        chars.for_each(|c| {
+            if inner.last().unwrap().same_lang(c) {
+                inner.last_mut().unwrap().add_char(c);
             } else {
-                japanese.push(c);
-            }
-        }
-        if !english.is_empty() {
-            inner.push(MultiLang::English(english));
-        }
-        if !japanese.is_empty() {
-            inner.push(MultiLang::Japanese(japanese));
-        }
+                inner.push(MultiLang::from_char(c));
+            };
+        });
         Self { inner }
     }
     pub fn to_string(&self) -> String {
@@ -123,16 +121,40 @@ pub enum MultiLang {
     Japanese(String),
 }
 
+impl MultiLang {
+    fn from_char(c: char) -> Self {
+        if c.is_ascii() {
+            Self::English(c.to_string())
+        } else {
+            Self::Japanese(c.to_string())
+        }
+    }
+    fn same_lang(&self, c: char) -> bool {
+        match self {
+            Self::English(_) => c.is_ascii(),
+            Self::Japanese(_) => !c.is_ascii(),
+        }
+    }
+    fn add_char(&mut self, c: char) {
+        match self {
+            Self::English(s) => s.push(c),
+            Self::Japanese(s) => s.push(c),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
     fn test_英語と日本語が混ざった文章を構造体にする() {
-        let src = "Hello,こんにちは";
+        let src = "Hello,こんにちは,what time is it now? 今何時？";
         let expected = MultiLangSentence {
             inner: vec![
                 MultiLang::English("Hello,".to_string()),
                 MultiLang::Japanese("こんにちは".to_string()),
+                MultiLang::English(",what time is it now? ".to_string()),
+                MultiLang::Japanese("今何時？".to_string()),
             ],
         };
         assert_eq!(expected, MultiLangSentence::from(src));
