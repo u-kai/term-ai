@@ -1,3 +1,5 @@
+use std::num::ParseIntError;
+
 use clap::{Parser, Subcommand};
 
 use crate::{
@@ -55,6 +57,29 @@ impl TermAi {
                 self.set_option(&mut gpt, option);
                 gpt.repl().unwrap();
             }
+            Sub::FirstSystemCommand {
+                ai_display,
+                your_display,
+                first_command,
+            } => {
+                Self::print_init("First System Command");
+                let option = CommandOption {
+                    ai_display: ai_display.clone(),
+                    your_display: your_display.clone(),
+                };
+
+                let first_command = if first_command.is_some() {
+                    first_command.clone().unwrap()
+                } else {
+                    std::env::var("GPT_FIRST_COMMAND").unwrap()
+                };
+                println!("request ->  {}", first_command);
+                let mut gpt = GptRepl::new(
+                    FirstSystemCommand::with_display_first_response(&first_command).unwrap(),
+                );
+                self.set_option(&mut gpt, &option);
+                gpt.repl().unwrap();
+            }
         }
     }
     fn print_init(client: &str) {
@@ -90,6 +115,15 @@ enum Sub {
         about = "capture your code and dist to sample_for_gpt_xxxxxx.LANG"
     )]
     Capture(CommandOption),
+    #[clap(name = "first", about = "First System Command")]
+    FirstSystemCommand {
+        #[clap(short, long)]
+        your_display: Option<String>,
+        #[clap(short, long)]
+        ai_display: Option<String>,
+        #[clap(short, long)]
+        first_command: Option<String>,
+    },
     #[cfg(target_os = "macos")]
     Speaker(CommandOption),
 }
