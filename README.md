@@ -81,6 +81,20 @@ gpt> どういたしまして!!...
 
 ---
 
+## Speaker
+
+Speaker is text-to-speech feature using the `say` command.So,this feature is only available on macOS as it depends on that specific command.
+
+```bash
+termai speaker
+
+YOUR_NAME> hello 今日はいい天気ですね．
+gpt> hello. I'm GPT. 今日はいい天気なんですか？AIだからわからないです...
+
+```
+
+---
+
 ## English Teacher
 
 ---
@@ -91,8 +105,4 @@ gpt> どういたしまして!!...
 --your-display, -y
 --ai-display, -a
 --help, -h
-```
-
-```
-
 ```
