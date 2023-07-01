@@ -1,5 +1,3 @@
-use std::num::ParseIntError;
-
 use clap::{Parser, Subcommand};
 
 use crate::{
@@ -125,6 +123,7 @@ enum Sub {
         first_command: Option<String>,
     },
     #[cfg(target_os = "macos")]
+    #[clap(name = "speaker", about = "Speaker for macos")]
     Speaker(CommandOption),
 }
 
