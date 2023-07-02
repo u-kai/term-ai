@@ -1,5 +1,5 @@
-use clap::{Parser, Subcommand};
-
+#[cfg(target_os = "macos")]
+use crate::wrapper::speaker::Speaker;
 use crate::{
     gpt::OpenAIModel,
     repl::{GptMessageHandler, GptRepl},
@@ -7,9 +7,9 @@ use crate::{
         code_capture::{CodeCaptureGpt, SampleFileMaker},
         code_reviewer::CodeReviewer,
         first_command::FirstSystemCommand,
-        speaker::Speaker,
     },
 };
+use clap::{Parser, Subcommand};
 #[derive(Parser)]
 pub struct TermAi {
     #[clap(subcommand)]
@@ -49,6 +49,7 @@ impl TermAi {
                 self.set_option(&mut gpt, option);
                 gpt.repl().unwrap();
             }
+            #[cfg(target_os = "macos")]
             Sub::Speaker(option) => {
                 Self::print_init("Speaker");
                 let mut gpt = GptRepl::new(Speaker::from_env().unwrap());

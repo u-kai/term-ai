@@ -1,5 +1,7 @@
+#[cfg(target_os = "macos")]
 use std::process::Command;
 
+#[cfg(target_os = "macos")]
 use crate::{
     gpt::{GptClient, GptClientError},
     repl::GptMessageHandler,
@@ -12,6 +14,7 @@ pub struct Speaker {
     client: GptClient,
 }
 
+#[cfg(target_os = "macos")]
 impl GptMessageHandler<GptClientError> for Speaker {
     fn handle<F>(&mut self, message: &str, f: &F) -> Result<(), GptClientError>
     where
@@ -21,6 +24,7 @@ impl GptMessageHandler<GptClientError> for Speaker {
     }
 }
 
+#[cfg(target_os = "macos")]
 impl Speaker {
     pub fn from_env() -> Result<Self, crate::gpt::GptClientError> {
         let client = GptClient::from_env()?;
@@ -60,12 +64,14 @@ fn say_command(message: &str, speaker: &MacSayCommandSpeaker) {
     }
 }
 
+#[cfg(target_os = "macos")]
 #[derive(Debug, Clone)]
 pub enum MacSayCommandSpeaker {
     Karen,
     Tessa,
     Kyoko,
 }
+#[cfg(target_os = "macos")]
 
 impl MacSayCommandSpeaker {
     fn to_name(&self) -> &'static str {
