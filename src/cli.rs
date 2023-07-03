@@ -1,3 +1,5 @@
+#[cfg(target_os = "macos")]
+use crate::wrapper::speaker::Speaker;
 use clap::{Parser, Subcommand};
 
 use crate::{
@@ -7,7 +9,6 @@ use crate::{
         code_capture::{CodeCaptureGpt, SampleFileMaker},
         code_reviewer::CodeReviewer,
         first_command::FirstSystemCommand,
-        speaker::Speaker,
         translator::{TranslateWriter, Translator},
     },
 };

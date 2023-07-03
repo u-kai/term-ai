@@ -29,10 +29,9 @@ impl SampleFileMaker {
 
 impl CodeWriter for SampleFileMaker {
     fn write_all(&mut self, code: Code) -> Result<(), std::io::Error> {
-        let filename = if let Some(ex) = code.extends_str() {
-            format!("{}.{}", self.make_filename(), ex)
-        } else {
-            self.make_filename()
+        let filename = match code.extends_str() {
+            Some(ex) => format!("{}.{}", self.make_filename(), ex),
+            None => self.make_filename(),
         };
         let mut file = std::fs::File::create(filename)?;
         file.write_all(code.as_bytes())?;
