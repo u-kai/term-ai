@@ -8,6 +8,7 @@ use crate::{
         code_reviewer::CodeReviewer,
         first_command::FirstSystemCommand,
         speaker::Speaker,
+        translator::{TranslateWriter, Translator},
     },
 };
 #[derive(Parser)]
@@ -54,6 +55,31 @@ impl TermAi {
                 let mut gpt = GptRepl::new(Speaker::from_env().unwrap());
                 self.set_option(&mut gpt, option);
                 gpt.repl().unwrap();
+            }
+            Sub::Translator {
+                your_display,
+                ai_display,
+                write_mode,
+            } => {
+                if *write_mode {
+                    Self::print_init("Translator");
+                    let mut gpt = GptRepl::new(TranslateWriter::from_env().unwrap());
+                    let option = CommandOption {
+                        ai_display: ai_display.clone(),
+                        your_display: your_display.clone(),
+                    };
+                    self.set_option(&mut gpt, &option);
+                    gpt.repl().unwrap();
+                } else {
+                    Self::print_init("Translator");
+                    let mut gpt = GptRepl::new(Translator::from_env().unwrap());
+                    let option = CommandOption {
+                        ai_display: ai_display.clone(),
+                        your_display: your_display.clone(),
+                    };
+                    self.set_option(&mut gpt, &option);
+                    gpt.repl().unwrap();
+                }
             }
             Sub::FirstSystemCommand {
                 ai_display,
@@ -105,6 +131,15 @@ impl TermAi {
 #[derive(Subcommand)]
 enum Sub {
     Gpt3(CommandOption),
+    #[clap(name = "trans", about = "Translator")]
+    Translator {
+        #[clap(short, long)]
+        your_display: Option<String>,
+        #[clap(short, long)]
+        ai_display: Option<String>,
+        #[clap(short, long)]
+        write_mode: bool,
+    },
     #[clap(name = "ent", about = "English Teacher")]
     EnglishTeacher(CommandOption),
     Review(CommandOption),

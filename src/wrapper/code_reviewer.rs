@@ -1,9 +1,11 @@
-use std::{fs::File, io::Read, path::Path};
+use std::{fs::File, io::Read};
 
 use crate::{
     gpt::{GptClient, GptClientError, OpenAIModel, Role},
     repl::GptMessageHandler,
 };
+
+use super::common::is_file_path;
 
 #[derive(Debug, Clone)]
 pub struct CodeReviewer {
@@ -47,9 +49,4 @@ impl CodeReviewer {
             *path = format!("{}\n{}", Self::PREFIX, code);
         }
     }
-}
-
-fn is_file_path(path: &str) -> bool {
-    let path = Path::new(path);
-    path.exists() && path.is_file()
 }

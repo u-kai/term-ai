@@ -5,29 +5,6 @@ use crate::{
     repl::GptMessageHandler,
 };
 
-pub trait FirstSystemCommandInput {
-    fn first_system_command(&mut self, model: OpenAIModel) -> Result<(), GptClientError>;
-    fn first_system_command_with_response(&mut self) -> Result<(), GptClientError>;
-}
-
-pub struct FirstSystemCommandInputModel<T: FirstSystemCommandInput> {
-    model: OpenAIModel,
-    client: T,
-}
-
-impl<T: FirstSystemCommandInput> GptMessageHandler<GptClientError>
-    for FirstSystemCommandInputModel<T>
-{
-    fn handle<F>(&mut self, message: &str, f: &F) -> Result<(), GptClientError>
-    where
-        F: Fn(&str),
-    {
-        self.client.first_system_command(self.model)?;
-        self.client.first_system_command_with_response()?;
-        Ok(())
-    }
-}
-
 pub struct FirstSystemCommand {
     model: OpenAIModel,
     client: GptClient,
