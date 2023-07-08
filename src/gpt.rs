@@ -90,6 +90,7 @@ pub struct ChatHandler<F: Fn(&str) -> ()> {
     stream: RefCell<ChatStream>,
 }
 impl<F: Fn(&str) -> ()> ChatHandler<F> {
+    const GPT_DONE: &'static str = "[DONE]";
     pub fn new(f: F) -> Self {
         Self {
             f,
@@ -114,7 +115,7 @@ impl<F: Fn(&str) -> ()> EventHandler<ChatResponse> for ChatHandler<F> {
                 Ok(SseResult::Continue)
             }
             Err(e) => {
-                if event == "[DONE]" {
+                if event == Self::GPT_DONE {
                     return self.finished();
                 }
                 return Err(GptClientError {
@@ -262,6 +263,17 @@ impl ChatHistory {
             role,
             content: message.into(),
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_last_response() {
+        let mut chat_history = ChatHistory::new();
+        chat_history.push_response(ChatResponse("test".to_string()));
+        assert_eq!(chat_history.last_response(), Some("test"));
     }
 }
 
