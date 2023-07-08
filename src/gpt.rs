@@ -249,6 +249,12 @@ impl ChatHistory {
     fn new() -> Self {
         Self { inner: Vec::new() }
     }
+    fn all(&self) -> Vec<Message> {
+        self.inner.clone()
+    }
+    fn clear(&mut self) {
+        self.inner.clear();
+    }
     fn last_response(&self) -> Option<&str> {
         self.inner.last().map(|m| m.content.as_str())
     }
@@ -263,17 +269,6 @@ impl ChatHistory {
             role,
             content: message.into(),
         });
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn test_last_response() {
-        let mut chat_history = ChatHistory::new();
-        chat_history.push_response(ChatResponse("test".to_string()));
-        assert_eq!(chat_history.last_response(), Some("test"));
     }
 }
 
@@ -321,7 +316,7 @@ struct ChatRequest {
     stream: bool,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct Message {
     role: Role,
     content: String,
@@ -402,5 +397,47 @@ fn proxy_from_env() -> Option<String> {
                 },
             },
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_clear() {
+        let mut chat_history = ChatHistory::new();
+        chat_history.push_request("hello", Role::User);
+        chat_history.push_response(ChatResponse("hello,i am gpt".to_string()));
+        chat_history.push_request("thanks", Role::User);
+        chat_history.push_response(ChatResponse("thanks too.".to_string()));
+        assert_eq!(
+            chat_history.all(),
+            vec![
+                Message {
+                    role: Role::User,
+                    content: "hello".to_string(),
+                },
+                Message {
+                    role: Role::Assistant,
+                    content: "hello,i am gpt".to_string(),
+                },
+                Message {
+                    role: Role::User,
+                    content: "thanks".to_string(),
+                },
+                Message {
+                    role: Role::Assistant,
+                    content: "thanks too.".to_string(),
+                },
+            ]
+        );
+        chat_history.clear();
+        assert_eq!(chat_history.all(), vec![]);
+    }
+    #[test]
+    fn test_last_response() {
+        let mut chat_history = ChatHistory::new();
+        chat_history.push_response(ChatResponse("test".to_string()));
+        assert_eq!(chat_history.last_response(), Some("test"));
     }
 }
