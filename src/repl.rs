@@ -10,6 +10,7 @@ pub struct GptRepl<E: std::error::Error, T: GptMessageHandler<E>> {
 }
 
 pub trait GptMessageHandler<E: std::error::Error> {
+    fn clear_history(&mut self);
     fn handle<F>(&mut self, message: &str, f: &F) -> Result<(), E>
     where
         F: Fn(&str);
@@ -27,6 +28,9 @@ impl GptChat {
     }
 }
 impl GptMessageHandler<GptClientError> for GptChat {
+    fn clear_history(&mut self) {
+        self.client.clear_history();
+    }
     fn handle<F>(&mut self, message: &str, f: &F) -> Result<(), GptClientError>
     where
         F: Fn(&str),
@@ -60,6 +64,10 @@ impl<E: std::error::Error, T: GptMessageHandler<E>> GptRepl<E, T> {
             if Self::is_exit(&message) {
                 return Ok(());
             }
+            if Self::is_clear(&message) {
+                self.chat.clear_history();
+                continue;
+            }
             self.gpt_first();
             self.chat
                 .handle(&message, &|event| Self::gpt_message(event))?;
@@ -82,6 +90,9 @@ impl<E: std::error::Error, T: GptMessageHandler<E>> GptRepl<E, T> {
         let mut message = String::new();
         std::io::stdin().read_line(&mut message).unwrap();
         message
+    }
+    fn is_clear(message: &str) -> bool {
+        message == "clear\n"
     }
     fn is_exit(message: &str) -> bool {
         message == "exit\n"

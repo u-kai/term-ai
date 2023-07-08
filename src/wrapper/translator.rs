@@ -21,6 +21,9 @@ impl TranslateWriter {
 }
 
 impl GptMessageHandler<GptClientError> for TranslateWriter {
+    fn clear_history(&mut self) {
+        self.translator.clear_history();
+    }
     fn handle<F>(&mut self, message: &str, f: &F) -> Result<(), GptClientError>
     where
         F: Fn(&str) -> (),
@@ -69,6 +72,9 @@ impl Translator {
 }
 
 impl GptMessageHandler<GptClientError> for Translator {
+    fn clear_history(&mut self) {
+        self.gpt.clear_history();
+    }
     fn handle<F>(&mut self, message: &str, f: &F) -> Result<(), GptClientError>
     where
         F: Fn(&str) -> (),

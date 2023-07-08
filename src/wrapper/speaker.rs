@@ -16,6 +16,9 @@ pub struct Speaker {
 
 #[cfg(target_os = "macos")]
 impl GptMessageHandler<GptClientError> for Speaker {
+    fn clear_history(&mut self) {
+        self.client.clear_history();
+    }
     fn handle<F>(&mut self, message: &str, f: &F) -> Result<(), GptClientError>
     where
         F: Fn(&str),

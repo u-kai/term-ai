@@ -51,6 +51,9 @@ pub struct CodeCaptureGpt<W: CodeWriter> {
 }
 
 impl<W: CodeWriter> GptMessageHandler<GptClientError> for CodeCaptureGpt<W> {
+    fn clear_history(&mut self) {
+        self.gpt.clear_history();
+    }
     fn handle<F>(&mut self, message: &str, f: &F) -> Result<(), GptClientError>
     where
         F: Fn(&str) -> (),

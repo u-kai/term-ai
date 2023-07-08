@@ -11,6 +11,9 @@ pub struct FirstSystemCommand {
 }
 
 impl GptMessageHandler<GptClientError> for FirstSystemCommand {
+    fn clear_history(&mut self) {
+        self.client.clear_history();
+    }
     fn handle<F>(&mut self, message: &str, f: &F) -> Result<(), GptClientError>
     where
         F: Fn(&str),
