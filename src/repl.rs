@@ -66,6 +66,7 @@ impl<E: std::error::Error, T: GptMessageHandler<E>> GptRepl<E, T> {
             }
             if Self::is_clear(&message) {
                 self.chat.clear_history();
+                println!("clear chat history");
                 continue;
             }
             self.gpt_first();
