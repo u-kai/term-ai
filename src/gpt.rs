@@ -30,6 +30,9 @@ impl GptClient {
     pub fn set_proxy(&mut self, proxy_url: impl Into<String>) {
         self.proxy_url = Some(proxy_url.into());
     }
+    pub fn clear_history(&mut self) {
+        self.history.clear();
+    }
     pub fn chat<F: Fn(&str) -> ()>(
         &mut self,
         model: OpenAIModel,
@@ -63,7 +66,7 @@ impl GptClient {
         }
     }
     fn make_stream_request(&mut self, model: OpenAIModel) -> ChatRequest {
-        let messages = self.history.inner.clone();
+        let messages = self.history.all();
         ChatRequest {
             model,
             messages,
