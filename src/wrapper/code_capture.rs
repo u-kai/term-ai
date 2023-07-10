@@ -58,11 +58,12 @@ impl<W: CodeWriter> GptMessageHandler<GptClientError> for CodeCaptureGpt<W> {
     where
         F: Fn(&str) -> (),
     {
-        self.gpt
+        let result = self
+            .gpt
             .chat(OpenAIModel::Gpt3Dot5Turbo, Role::User, message, &|event| {
-                self.code_capture.borrow_mut().add(event);
                 f(event);
             })?;
+        self.code_capture.borrow_mut().add(&result);
         let codes = self.code_capture.borrow().get_codes();
         codes.into_iter().for_each(|code| {
             self.w.write_all(code).unwrap();
