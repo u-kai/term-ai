@@ -23,6 +23,11 @@ pub struct GptInput<F: Fn(&str)> {
     role: Role,
     f: F,
 }
+impl<F: Fn(&str)> GptInput<F> {
+    fn exe(&self) {
+        (self.f)(&self.input);
+    }
+}
 
 pub struct AnyHandler<T: ChatGpt> {
     gpt: T,
@@ -61,30 +66,40 @@ impl<T: ChatGpt> AnyHandler<T> {
 
 #[cfg(test)]
 mod tests {
-    struct FakeChatGpt {}
+    struct FakeChatGpt {
+        responses: Vec<String>,
+        index: usize,
+    }
     impl FakeChatGpt {
         fn new() -> Self {
-            Self {}
+            Self {
+                index: 0,
+                responses: Vec::new(),
+            }
         }
-    }
-    impl super::ChatGpt for FakeChatGpt {
-        fn chat<F: Fn(&str)>(&mut self, input: super::GptInput<F>) -> super::Result<String> {
-            (input.f)("message");
-            Ok("response".to_string())
+        fn add_response(&mut self, response: &str) {
+            self.responses.push(response.to_string());
         }
     }
 
-    struct InputHistory {
+    impl super::ChatGpt for FakeChatGpt {
+        fn chat<F: Fn(&str)>(&mut self, input: super::GptInput<F>) -> super::Result<String> {
+            input.exe();
+            Ok(self.responses.get(self.index).unwrap().to_string())
+        }
+    }
+
+    struct InputChecker {
         input: String,
     }
-    impl InputHistory {
+    impl InputChecker {
         fn new(input: &str) -> Self {
             Self {
                 input: input.to_string(),
             }
         }
     }
-    impl super::SseEventHandler for InputHistory {
+    impl super::SseEventHandler for InputChecker {
         fn do_action(&self, _: &str) -> bool {
             true
         }
@@ -95,8 +110,10 @@ mod tests {
     use super::*;
     #[test]
     fn 複数のevent_listenerを登録して実行可能() {
-        let mut sut = AnyHandler::new(FakeChatGpt::new());
-        let listener1 = InputHistory::new("hello");
+        let mut fake_gpt = FakeChatGpt::new();
+        fake_gpt.add_response("hello");
+        let mut sut = AnyHandler::new(fake_gpt);
+        let listener1 = InputChecker::new("hello");
         sut.add_listener(Box::new(listener1));
         // assert inner input history
         sut.input("hello");
