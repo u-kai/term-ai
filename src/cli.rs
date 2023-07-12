@@ -51,6 +51,7 @@ impl TermAi {
                 self.set_option(&mut gpt, option);
                 gpt.repl().unwrap();
             }
+            #[cfg(target_os = "macos")]
             Sub::Speaker(option) => {
                 Self::print_init("Speaker");
                 let mut gpt = GptRepl::new(Speaker::from_env().unwrap());
