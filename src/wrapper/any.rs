@@ -52,7 +52,7 @@ impl<T: ChatGpt> AnyHandler<T> {
     pub fn add_response_handler(&mut self, handler: Box<dyn ResponseHandler>) {
         self.response_handlers.push(handler);
     }
-    pub fn input(&mut self, input: &str) {
+    pub fn handle(&mut self, input: &str) {
         let response = self
             .gpt
             .chat(GptInput {
@@ -60,25 +60,35 @@ impl<T: ChatGpt> AnyHandler<T> {
                 model: self.model,
                 role: Role::User,
                 f: |_: &str| {
-                    self.sse_handlers.iter().for_each(|handler| {
-                        if handler.do_action(input) {
-                            handler.handle(input);
-                        }
-                    });
+                    self.sse_handlers
+                        .iter()
+                        .filter(|handler| handler.do_action(input))
+                        .for_each(|handler| handler.handle(input));
                 },
             })
             .unwrap();
-        self.response_handlers.iter_mut().for_each(|handler| {
-            if handler.do_action(input) {
-                handler.handle(&response);
-            }
-        });
+        self.response_handlers
+            .iter_mut()
+            .filter(|handler| handler.do_action(input))
+            .for_each(|handler| handler.handle(&response))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn 複数のinput_convertorを登録して実行可能_成功() {
+        let mut fake_gpt = FakeChatGpt::new();
+        fake_gpt.add_response("ok");
+        let mut sut = AnyHandler::new(fake_gpt);
+        let listener1 = ResponseChecker::new("ok");
+        let listener2 = ResponseLenChecker::new(2);
+        sut.add_response_handler(Box::new(listener1));
+        sut.add_response_handler(Box::new(listener2));
+        // assert inner input history
+        sut.handle("hello");
+    }
     #[test]
     fn 複数のresponse_handlerを登録して実行可能_成功() {
         let mut fake_gpt = FakeChatGpt::new();
@@ -89,7 +99,7 @@ mod tests {
         sut.add_response_handler(Box::new(listener1));
         sut.add_response_handler(Box::new(listener2));
         // assert inner input history
-        sut.input("hello");
+        sut.handle("hello");
     }
     #[test]
     #[should_panic]
@@ -103,7 +113,7 @@ mod tests {
         sut.add_response_handler(Box::new(listener1));
         sut.add_response_handler(Box::new(listener2));
         // assert inner input history
-        sut.input("hello");
+        sut.handle("hello");
 
         let mut fake_gpt = FakeChatGpt::new();
         fake_gpt.add_response("ok");
@@ -114,7 +124,7 @@ mod tests {
         sut.add_response_handler(Box::new(listener1));
         sut.add_response_handler(Box::new(listener2));
         // assert inner input history
-        sut.input("hello");
+        sut.handle("hello");
     }
     #[test]
     fn 複数のsse_event_handlerを登録して実行可能_成功() {
@@ -126,7 +136,7 @@ mod tests {
         sut.add_listener(Box::new(listener1));
         sut.add_listener(Box::new(listener2));
         // assert inner input history
-        sut.input("hello");
+        sut.handle("hello");
     }
     #[test]
     #[should_panic]
@@ -140,7 +150,7 @@ mod tests {
         sut.add_listener(Box::new(listener1));
         sut.add_listener(Box::new(listener2));
         // assert inner input history
-        sut.input("hello");
+        sut.handle("hello");
 
         let mut fake_gpt = FakeChatGpt::new();
         fake_gpt.add_response("hello");
@@ -151,7 +161,7 @@ mod tests {
         sut.add_listener(Box::new(listener1));
         sut.add_listener(Box::new(listener2));
         // assert inner input history
-        sut.input("hello");
+        sut.handle("hello");
     }
     struct FakeChatGpt {
         responses: Vec<String>,
@@ -206,7 +216,7 @@ mod tests {
         }
     }
     impl ResponseHandler for ResponseChecker {
-        fn do_action(&self, response: &str) -> bool {
+        fn do_action(&self, _: &str) -> bool {
             true
         }
         fn handle(&mut self, response: &str) {
