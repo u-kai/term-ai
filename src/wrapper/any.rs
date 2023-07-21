@@ -10,38 +10,35 @@ pub trait ResponseHandler {
 }
 pub trait InputConvertor {
     fn do_convert(&self, input: &str) -> bool;
-    fn convertor<F1: Fn(&str), F2: Fn(&str)>(&self, input: GptInput<F1>) -> GptInput<F2>;
+    fn convertor(&self, input: GptInput) -> GptInput;
 }
 pub trait ChatGpt {
-    fn chat<F: Fn(&str)>(&mut self, input: GptInput<F>) -> Result<String>;
+    fn chat<F: Fn(&str)>(&mut self, input: &GptInput, handler: &F) -> Result<String>;
 }
 
 #[derive(Debug, Clone)]
-pub struct GptInput<F: Fn(&str)> {
+pub struct GptInput {
     input: String,
     model: OpenAIModel,
     role: Role,
-    f: F,
-}
-impl<F: Fn(&str)> GptInput<F> {
-    fn exe(&self) {
-        (self.f)(&self.input);
-    }
 }
 
 pub struct AnyHandler<T: ChatGpt> {
     gpt: T,
     sse_handlers: Vec<Box<dyn SseEventHandler>>,
     response_handlers: Vec<Box<dyn ResponseHandler>>,
+    input_convertor: Vec<Box<dyn InputConvertor>>,
     model: OpenAIModel,
 }
 impl<T: ChatGpt> AnyHandler<T> {
     pub fn new(gpt: T) -> Self {
         let sse_handlers: Vec<Box<dyn SseEventHandler>> = Vec::new();
         let response_handlers: Vec<Box<dyn ResponseHandler>> = Vec::new();
+        let input_convertor: Vec<Box<dyn InputConvertor>> = Vec::new();
         Self {
             sse_handlers,
             response_handlers,
+            input_convertor,
             gpt,
             model: OpenAIModel::Gpt3Dot5Turbo,
         }
@@ -52,24 +49,33 @@ impl<T: ChatGpt> AnyHandler<T> {
     pub fn add_response_handler(&mut self, handler: Box<dyn ResponseHandler>) {
         self.response_handlers.push(handler);
     }
+    pub fn add_input_convertor(&mut self, handler: Box<dyn InputConvertor>) {
+        self.input_convertor.push(handler);
+    }
     pub fn handle(&mut self, input: &str) {
+        let input = GptInput {
+            input: input.to_string(),
+            model: self.model,
+            role: Role::User,
+        };
+        let check = input.input.clone();
+        let input = self
+            .input_convertor
+            .iter()
+            .filter(|handler| handler.do_convert(&check))
+            .fold(input, |acc, handler| handler.convertor(acc));
         let response = self
             .gpt
-            .chat(GptInput {
-                input: input.to_string(),
-                model: self.model,
-                role: Role::User,
-                f: |_: &str| {
-                    self.sse_handlers
-                        .iter()
-                        .filter(|handler| handler.do_action(input))
-                        .for_each(|handler| handler.handle(input));
-                },
+            .chat(&input, &|event: &str| {
+                self.sse_handlers
+                    .iter()
+                    .filter(|handler| handler.do_action(&input.input))
+                    .for_each(|handler| handler.handle(event));
             })
             .unwrap();
         self.response_handlers
             .iter_mut()
-            .filter(|handler| handler.do_action(input))
+            .filter(|handler| handler.do_action(&input.input))
             .for_each(|handler| handler.handle(&response))
     }
 }
@@ -82,12 +88,14 @@ mod tests {
         let mut fake_gpt = FakeChatGpt::new();
         fake_gpt.add_response("ok");
         let mut sut = AnyHandler::new(fake_gpt);
-        let listener1 = ResponseChecker::new("ok");
-        let listener2 = ResponseLenChecker::new(2);
-        sut.add_response_handler(Box::new(listener1));
-        sut.add_response_handler(Box::new(listener2));
+        let convertor1 = InputAdder::new("hello");
+        let convertor2 = InputAdder::new(" world");
+        let checker = InputChecker::new("hello world");
+        sut.add_input_convertor(Box::new(convertor1));
+        sut.add_input_convertor(Box::new(convertor2));
+        sut.add_listener(Box::new(checker));
         // assert inner input history
-        sut.handle("hello");
+        sut.handle("");
     }
     #[test]
     fn 複数のresponse_handlerを登録して実行可能_成功() {
@@ -180,12 +188,32 @@ mod tests {
     }
 
     impl super::ChatGpt for FakeChatGpt {
-        fn chat<F: Fn(&str)>(&mut self, input: super::GptInput<F>) -> super::Result<String> {
-            input.exe();
+        fn chat<F: Fn(&str)>(&mut self, input: &GptInput, handler: &F) -> super::Result<String> {
+            handler(&input.input);
             Ok(self.responses.get(self.index).unwrap().to_string())
         }
     }
-
+    struct InputAdder {
+        input: String,
+    }
+    impl InputAdder {
+        fn new(input: &str) -> Self {
+            Self {
+                input: input.to_string(),
+            }
+        }
+    }
+    impl InputConvertor for InputAdder {
+        fn do_convert(&self, _input: &str) -> bool {
+            true
+        }
+        fn convertor(&self, input: GptInput) -> GptInput {
+            GptInput {
+                input: format!("{}{}", input.input, self.input),
+                ..input
+            }
+        }
+    }
     struct InputChecker {
         input: String,
     }
