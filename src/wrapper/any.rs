@@ -22,6 +22,24 @@ pub struct GptInput {
     model: OpenAIModel,
     role: Role,
 }
+impl GptInput {
+    pub fn new(input: impl Into<String>, model: OpenAIModel, role: Role) -> Self {
+        Self {
+            input: input.into(),
+            model,
+            role,
+        }
+    }
+    pub fn change_input(&mut self, input: impl Into<String>) {
+        self.input = input.into();
+    }
+    pub fn change_model(&mut self, model: OpenAIModel) {
+        self.model = model;
+    }
+    pub fn change_role(&mut self, role: Role) {
+        self.role = role;
+    }
+}
 
 pub struct AnyHandler<T: ChatGpt> {
     gpt: T,
@@ -53,17 +71,18 @@ impl<T: ChatGpt> AnyHandler<T> {
         self.input_convertor.push(handler);
     }
     pub fn handle(&mut self, input: &str) {
-        let input = GptInput {
-            input: input.to_string(),
-            model: self.model,
-            role: Role::User,
-        };
-        let check = input.input.clone();
         let input = self
             .input_convertor
             .iter()
-            .filter(|handler| handler.do_convert(&check))
-            .fold(input, |acc, handler| handler.convertor(acc));
+            .filter(|handler| handler.do_convert(input))
+            .fold(
+                GptInput {
+                    input: input.to_string(),
+                    model: self.model,
+                    role: Role::User,
+                },
+                |acc, handler| handler.convertor(acc),
+            );
         let response = self
             .gpt
             .chat(&input, &|event: &str| {
