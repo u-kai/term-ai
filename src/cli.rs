@@ -3,13 +3,14 @@ use crate::wrapper::speaker::Speaker;
 use clap::{Parser, Subcommand};
 
 use crate::{
-    gpt::OpenAIModel,
+    gpt::{GptClient, OpenAIModel},
     repl::{GptMessageHandler, GptRepl},
     wrapper::{
+        any::{AnyHandler, GptInput, Printer},
         code_capture::{CodeCaptureGpt, SampleFileMaker},
         code_reviewer::CodeReviewer,
         first_command::FirstSystemCommand,
-        translator::{TranslateWriter, Translator},
+        translator::{FileTranslator, TranslateWriter, Translator},
     },
 };
 #[derive(Parser)]
@@ -24,6 +25,20 @@ impl TermAi {
     }
     pub fn run(&self) {
         match &self.sub {
+            Sub::Translate { path } => {
+                let mut any = AnyHandler::new(GptClient::from_env().unwrap());
+                let file_translator = FileTranslator::new();
+                let printer = Printer::new();
+                any.add_event_handler(Box::new(printer));
+                any.add_input_convertor(Box::new(file_translator.clone()));
+                any.add_response_handler(Box::new(file_translator.clone()));
+                any.handle(GptInput::new(
+                    path,
+                    OpenAIModel::Gpt3Dot5Turbo,
+                    crate::gpt::Role::User,
+                ))
+                .unwrap();
+            }
             Sub::Gpt3(option) => {
                 Self::print_init("GPT3 REPL");
                 let mut gpt = GptRepl::from_env(OpenAIModel::Gpt3Dot5Turbo).unwrap();
@@ -132,6 +147,11 @@ impl TermAi {
 
 #[derive(Subcommand)]
 enum Sub {
+    #[clap(name = "translate", about = "Translate")]
+    Translate {
+        #[clap(short, long)]
+        path: String,
+    },
     Gpt3(CommandOption),
     #[clap(name = "trans", about = "Translator")]
     Translator {

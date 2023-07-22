@@ -1,4 +1,4 @@
-use std::{cell::RefCell, fs::read_to_string, io::Write};
+use std::{cell::RefCell, fs::read_to_string, io::Write, rc::Rc};
 
 use crate::{
     gpt::{GptClient, GptClientError, OpenAIModel, Role},
@@ -10,16 +10,21 @@ use super::{
     common::is_file_path,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct FileTranslator {
-    path: RefCell<String>,
+    path: Rc<RefCell<String>>,
 }
 
 impl FileTranslator {
     const PREFIX: &'static str = "以下の文章を翻訳してください";
     pub fn new() -> Self {
         Self {
-            path: RefCell::new(String::new()),
+            path: Rc::new(RefCell::new(String::new())),
+        }
+    }
+    pub fn clone(&self) -> Self {
+        Self {
+            path: Rc::clone(&self.path),
         }
     }
     fn path_to_translate_request(path: &str) -> String {
@@ -29,6 +34,8 @@ impl FileTranslator {
 
 impl ResponseHandler for FileTranslator {
     fn do_action(&self, _: &str) -> bool {
+        println!("path  {}", self.path.borrow().trim());
+        println!("is_path  {}", self.path.borrow().trim());
         is_file_path(self.path.borrow().trim())
     }
     fn handle(&mut self, response: &str) {
@@ -43,7 +50,7 @@ impl ResponseHandler for FileTranslator {
 impl InputConvertor for FileTranslator {
     fn do_convert(&self, input: &str) -> bool {
         if is_file_path(input.trim()) {
-            *self.path.borrow_mut() = input.trim().to_string();
+            self.path.borrow_mut().push_str(&input.trim());
             true
         } else {
             false
