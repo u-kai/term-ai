@@ -1,11 +1,60 @@
-use std::{fs::read_to_string, io::Write};
+use std::{cell::RefCell, fs::read_to_string, io::Write};
 
 use crate::{
     gpt::{GptClient, GptClientError, OpenAIModel, Role},
     repl::GptMessageHandler,
 };
 
-use super::common::is_file_path;
+use super::{
+    any::{InputConvertor, ResponseHandler},
+    common::is_file_path,
+};
+
+#[derive(Debug, Clone)]
+pub struct FileTranslator {
+    path: RefCell<String>,
+}
+
+impl FileTranslator {
+    const PREFIX: &'static str = "以下の文章を翻訳してください";
+    pub fn new() -> Self {
+        Self {
+            path: RefCell::new(String::new()),
+        }
+    }
+    fn path_to_translate_request(path: &str) -> String {
+        format!("{}\n{}", Self::PREFIX, read_to_string(path).unwrap())
+    }
+}
+
+impl ResponseHandler for FileTranslator {
+    fn do_action(&self, _: &str) -> bool {
+        is_file_path(self.path.borrow().trim())
+    }
+    fn handle(&mut self, response: &str) {
+        let mut file = std::fs::OpenOptions::new()
+            .append(true)
+            .open(self.path.borrow().trim())
+            .unwrap();
+        file.write_all(response.as_bytes()).unwrap();
+    }
+}
+
+impl InputConvertor for FileTranslator {
+    fn do_convert(&self, input: &str) -> bool {
+        if is_file_path(input.trim()) {
+            *self.path.borrow_mut() = input.trim().to_string();
+            true
+        } else {
+            false
+        }
+    }
+    fn convertor(&self, input: super::any::GptInput) -> super::any::GptInput {
+        let mut input = input;
+        input.change_input(Self::path_to_translate_request(input.input().trim()));
+        input
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct TranslateWriter {

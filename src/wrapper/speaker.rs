@@ -7,6 +7,25 @@ use crate::{
     repl::GptMessageHandler,
 };
 
+use super::any::ResponseHandler;
+
+#[cfg(target_os = "macos")]
+#[derive(Debug, Clone)]
+pub struct MacSpeaker {}
+impl MacSpeaker {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+impl ResponseHandler for MacSpeaker {
+    fn handle(&mut self, response: &str) {
+        multi_lang_say(response);
+    }
+    fn do_action(&self, _: &str) -> bool {
+        true
+    }
+}
+
 #[cfg(target_os = "macos")]
 #[derive(Debug, Clone)]
 pub struct Speaker {

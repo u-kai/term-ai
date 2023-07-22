@@ -1,3 +1,5 @@
+use std::io::Write;
+
 use crate::gpt::{GptClient, OpenAIModel, Result, Role};
 
 pub trait SseEventHandler {
@@ -22,6 +24,23 @@ impl ChatGpt for GptClient {
     }
 }
 
+pub struct Printer {}
+impl Printer {
+    pub fn new() -> Self {
+        println!();
+        Self {}
+    }
+}
+impl SseEventHandler for Printer {
+    fn handle(&self, event: &str) {
+        print!("{}", event);
+        std::io::stdout().flush().unwrap();
+    }
+    fn do_action(&self, _: &str) -> bool {
+        true
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct GptInput {
     input: String,
@@ -35,6 +54,9 @@ impl GptInput {
             model,
             role,
         }
+    }
+    pub fn input(&self) -> &str {
+        &self.input
     }
     pub fn change_input(&mut self, input: impl Into<String>) {
         self.input = input.into();
