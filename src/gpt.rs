@@ -324,7 +324,7 @@ pub struct Message {
     role: Role,
     content: String,
 }
-#[derive(Debug, Clone, serde::Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, serde::Deserialize, PartialEq, Eq)]
 pub enum Role {
     User,
     System,

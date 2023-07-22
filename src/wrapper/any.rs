@@ -1,4 +1,4 @@
-use crate::gpt::{OpenAIModel, Result, Role};
+use crate::gpt::{GptClient, OpenAIModel, Result, Role};
 
 pub trait SseEventHandler {
     fn do_action(&self, input: &str) -> bool;
@@ -14,6 +14,12 @@ pub trait InputConvertor {
 }
 pub trait ChatGpt {
     fn chat<F: Fn(&str)>(&mut self, input: &GptInput, handler: &F) -> Result<String>;
+}
+
+impl ChatGpt for GptClient {
+    fn chat<F: Fn(&str)>(&mut self, input: &GptInput, handler: &F) -> Result<String> {
+        self.chat(input.model, input.role, &input.input, handler)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -46,7 +52,6 @@ pub struct AnyHandler<T: ChatGpt> {
     sse_handlers: Vec<Box<dyn SseEventHandler>>,
     response_handlers: Vec<Box<dyn ResponseHandler>>,
     input_convertor: Vec<Box<dyn InputConvertor>>,
-    model: OpenAIModel,
 }
 impl<T: ChatGpt> AnyHandler<T> {
     pub fn new(gpt: T) -> Self {
@@ -58,10 +63,9 @@ impl<T: ChatGpt> AnyHandler<T> {
             response_handlers,
             input_convertor,
             gpt,
-            model: OpenAIModel::Gpt3Dot5Turbo,
         }
     }
-    pub fn add_listener(&mut self, handler: Box<dyn SseEventHandler>) {
+    pub fn add_event_handler(&mut self, handler: Box<dyn SseEventHandler>) {
         self.sse_handlers.push(handler);
     }
     pub fn add_response_handler(&mut self, handler: Box<dyn ResponseHandler>) {
@@ -70,15 +74,13 @@ impl<T: ChatGpt> AnyHandler<T> {
     pub fn add_input_convertor(&mut self, handler: Box<dyn InputConvertor>) {
         self.input_convertor.push(handler);
     }
-    pub fn handle(&mut self, input: &str) -> Result<()> {
+    pub fn handle(&mut self, input: GptInput) -> Result<()> {
+        let input_str = input.input.clone();
         let input = self
             .input_convertor
             .iter()
-            .filter(|handler| handler.do_convert(input))
-            .fold(
-                GptInput::new(input, self.model, Role::User),
-                |acc, handler| handler.convertor(acc),
-            );
+            .filter(|handler| handler.do_convert(&input_str))
+            .fold(input, |acc, handler| handler.convertor(acc));
         let response = self.gpt.chat(&input, &|event: &str| {
             self.sse_handlers
                 .iter()
@@ -97,18 +99,58 @@ impl<T: ChatGpt> AnyHandler<T> {
 mod tests {
     use super::*;
     #[test]
+    #[ignore = "本物のChatGPTを利用するため"]
+    fn 本物のgptを利用して実行可能() {
+        let gpt = GptClient::from_env().unwrap();
+        let mut sut = AnyHandler::new(gpt);
+        let event_checker = EventChecker {
+            input: "".to_string(),
+            condition: |s, _| {
+                s.len() == 0
+                    || !s
+                        .chars()
+                        .filter(|c| !c.is_whitespace())
+                        .nth(0)
+                        .unwrap()
+                        .is_ascii()
+            },
+        };
+        let response_checker = ResponseChecker {
+            expect: "".to_string(),
+            condition: |s, _| s.len() > 0,
+        };
+        let response_checker2 = ResponseChecker {
+            expect: "".to_string(),
+            condition: |s, _| {
+                !s.chars()
+                    .filter(|c| !c.is_whitespace())
+                    .nth(0)
+                    .unwrap()
+                    .is_ascii()
+            },
+        };
+        let input = GptInput::new("hello.", OpenAIModel::Gpt3Dot5Turbo, Role::User);
+        let input_convertor = InputAdder::new("あなたは日本語で返事をしてくださいね．");
+        sut.add_event_handler(Box::new(event_checker));
+        sut.add_response_handler(Box::new(response_checker));
+        sut.add_response_handler(Box::new(response_checker2));
+        sut.add_input_convertor(Box::new(input_convertor));
+        sut.handle(input).unwrap();
+    }
+    #[test]
     fn 複数のinput_convertorを登録して実行可能_成功() {
         let mut fake_gpt = FakeChatGpt::new();
         fake_gpt.add_response("ok");
         let mut sut = AnyHandler::new(fake_gpt);
         let convertor1 = InputAdder::new("hello");
         let convertor2 = InputAdder::new(" world");
-        let checker = InputChecker::new("hello world");
+        let checker = EventChecker::new("hello world");
         sut.add_input_convertor(Box::new(convertor1));
         sut.add_input_convertor(Box::new(convertor2));
-        sut.add_listener(Box::new(checker));
+        sut.add_event_handler(Box::new(checker));
         // assert inner input history
-        sut.handle("").unwrap();
+        sut.handle(GptInput::new("", OpenAIModel::Gpt3Dot5Turbo, Role::User))
+            .unwrap();
     }
     #[test]
     fn 複数のresponse_handlerを登録して実行可能_成功() {
@@ -120,7 +162,12 @@ mod tests {
         sut.add_response_handler(Box::new(listener1));
         sut.add_response_handler(Box::new(listener2));
         // assert inner input history
-        sut.handle("hello").unwrap();
+        sut.handle(GptInput::new(
+            "hello",
+            OpenAIModel::Gpt3Dot5Turbo,
+            Role::User,
+        ))
+        .unwrap();
     }
     #[test]
     #[should_panic]
@@ -134,7 +181,12 @@ mod tests {
         sut.add_response_handler(Box::new(listener1));
         sut.add_response_handler(Box::new(listener2));
         // assert inner input history
-        sut.handle("hello").unwrap();
+        sut.handle(GptInput::new(
+            "hello",
+            OpenAIModel::Gpt3Dot5Turbo,
+            Role::User,
+        ))
+        .unwrap();
 
         let mut fake_gpt = FakeChatGpt::new();
         fake_gpt.add_response("ok");
@@ -145,19 +197,29 @@ mod tests {
         sut.add_response_handler(Box::new(listener1));
         sut.add_response_handler(Box::new(listener2));
         // assert inner input history
-        sut.handle("hello").unwrap();
+        sut.handle(GptInput::new(
+            "hello",
+            OpenAIModel::Gpt3Dot5Turbo,
+            Role::User,
+        ))
+        .unwrap();
     }
     #[test]
     fn 複数のsse_event_handlerを登録して実行可能_成功() {
         let mut fake_gpt = FakeChatGpt::new();
         fake_gpt.add_response("hello");
         let mut sut = AnyHandler::new(fake_gpt);
-        let listener1 = InputChecker::new("hello");
+        let listener1 = EventChecker::new("hello");
         let listener2 = InputLenChecker::new(5);
-        sut.add_listener(Box::new(listener1));
-        sut.add_listener(Box::new(listener2));
+        sut.add_event_handler(Box::new(listener1));
+        sut.add_event_handler(Box::new(listener2));
         // assert inner input history
-        sut.handle("hello").unwrap();
+        sut.handle(GptInput::new(
+            "hello",
+            OpenAIModel::Gpt3Dot5Turbo,
+            Role::User,
+        ))
+        .unwrap();
     }
     #[test]
     #[should_panic]
@@ -165,25 +227,37 @@ mod tests {
         let mut fake_gpt = FakeChatGpt::new();
         fake_gpt.add_response("hello");
         let mut sut = AnyHandler::new(fake_gpt);
-        let listener1 = InputChecker::new("hello");
+        let listener1 = EventChecker::new("hello");
         // invalid
         let listener2 = InputLenChecker::new(6);
-        sut.add_listener(Box::new(listener1));
-        sut.add_listener(Box::new(listener2));
+        sut.add_event_handler(Box::new(listener1));
+        sut.add_event_handler(Box::new(listener2));
         // assert inner input history
-        sut.handle("hello").unwrap();
+        sut.handle(GptInput::new(
+            "hello",
+            OpenAIModel::Gpt3Dot5Turbo,
+            Role::User,
+        ))
+        .unwrap();
 
         let mut fake_gpt = FakeChatGpt::new();
         fake_gpt.add_response("hello");
         let mut sut = AnyHandler::new(fake_gpt);
         // invalid
-        let listener1 = InputChecker::new("good bye");
+        let listener1 = EventChecker::new("good bye");
         let listener2 = InputLenChecker::new(8);
-        sut.add_listener(Box::new(listener1));
-        sut.add_listener(Box::new(listener2));
+        sut.add_event_handler(Box::new(listener1));
+        sut.add_event_handler(Box::new(listener2));
         // assert inner input history
-        sut.handle("hello").unwrap();
+        sut.handle(GptInput::new(
+            "hello",
+            OpenAIModel::Gpt3Dot5Turbo,
+            Role::User,
+        ))
+        .unwrap();
     }
+    /// テスト用のChatGpt
+    /// 与えられたinputをそのままEventとして出力する
     struct FakeChatGpt {
         responses: Vec<String>,
         index: usize,
@@ -227,41 +301,47 @@ mod tests {
             }
         }
     }
-    struct InputChecker {
+    struct EventChecker<F: Fn(&str, &str) -> bool> {
         input: String,
+        condition: F,
     }
-    impl InputChecker {
+    impl EventChecker<fn(&str, &str) -> bool> {
         fn new(input: &str) -> Self {
             Self {
                 input: input.to_string(),
+                condition: |l, r| l == r,
             }
         }
     }
-    impl super::SseEventHandler for InputChecker {
+    impl<F: Fn(&str, &str) -> bool> super::SseEventHandler for EventChecker<F> {
         fn do_action(&self, _: &str) -> bool {
             true
         }
         fn handle(&self, input: &str) {
-            assert_eq!(input, self.input);
+            println!("input: {}", input);
+            assert!((self.condition)(input, &self.input))
         }
     }
 
-    struct ResponseChecker {
+    struct ResponseChecker<F: Fn(&str, &str) -> bool> {
         expect: String,
+        condition: F,
     }
-    impl ResponseChecker {
+    impl ResponseChecker<fn(&str, &str) -> bool> {
         fn new(expect: &str) -> Self {
             Self {
                 expect: expect.to_string(),
+                condition: |l, r| l == r,
             }
         }
     }
-    impl ResponseHandler for ResponseChecker {
+    impl<F: Fn(&str, &str) -> bool> ResponseHandler for ResponseChecker<F> {
         fn do_action(&self, _: &str) -> bool {
             true
         }
         fn handle(&mut self, response: &str) {
-            assert_eq!(self.expect, response);
+            println!("response: {}", response);
+            assert!((self.condition)(response, &self.expect))
         }
     }
 
