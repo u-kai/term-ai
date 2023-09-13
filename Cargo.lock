@@ -52,6 +52,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "anyhow"
+version = "1.0.75"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a4668cab20f66d8d020e1fbc0ebe47217433c1b6c8f2040faf858554e394ace6"
+
+[[package]]
 name = "autocfg"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -400,12 +406,14 @@ dependencies = [
 [[package]]
 name = "rsse"
 version = "0.1.0"
-source = "git+https://github.com/u-kai/rsse.git?branch=main#9618184978f33546f8143f364b634c4a9f6b7ed1"
+source = "git+https://github.com/u-kai/rsse.git?branch=main#7f6c2f1f1cf21be92c925fd98ec9a27099c1546c"
 dependencies = [
+ "anyhow",
  "rustls",
  "rustls-pemfile",
  "serde",
  "serde_json",
+ "thiserror",
  "tokio",
  "tokio-rustls",
  "webpki",
@@ -567,6 +575,26 @@ dependencies = [
  "rsse",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "thiserror"
+version = "1.0.40"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "978c9a314bd8dc99be594bc3c175faaa9794be04a5a5e153caba6915336cebac"
+dependencies = [
+ "thiserror-impl",
+]
+
+[[package]]
+name = "thiserror-impl"
+version = "1.0.40"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f9456a42c5b0d803c8cd86e73dd7cc9edd429499f37a3550d286d5e86720569f"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

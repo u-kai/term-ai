@@ -3,7 +3,10 @@ use std::{
     fmt::{Debug, Display},
 };
 
-use rsse::{ErrorHandler, EventHandler, SseClient, SseResult};
+use rsse::{
+    client::{SseClient, SseClientBuilder},
+    sse::connector::SseTlsConnector,
+};
 
 #[derive(Debug, Clone)]
 pub struct GptClient {
@@ -33,38 +36,38 @@ impl GptClient {
     pub fn clear_history(&mut self) {
         self.history.clear();
     }
-    pub fn chat<F: Fn(&str) -> ()>(
-        &mut self,
-        model: OpenAIModel,
-        role: Role,
-        message: impl Into<String>,
-        f: &F,
-    ) -> Result<String> {
-        let message: String = message.into();
-        self.history.push_request(message.clone(), role);
-        let request = self.make_stream_request(model);
-        let client = match &self.proxy_url {
-            Some(proxy_url) => Self::client_with_proxy(f, proxy_url.as_str()),
-            None => Self::client(f),
-        };
-        let result = client
-            .bearer_auth(self.api_key.key())
-            .post()
-            .json(&request)
-            .handle_event()
-            .map_err(|e| GptClientError {
-                message: "Cause Error at GptClient::chat".to_string(),
-                kind: GptClientErrorKind::RequestError(e.to_string()),
-            })?;
-        match result {
-            SseResult::Continue => Ok("".to_string()),
-            SseResult::Retry => self.chat(model, Role::User, message, f),
-            SseResult::Finished(c) => {
-                self.history.push_response(c);
-                Ok(self.history.last_response().unwrap().to_string())
-            }
-        }
-    }
+    //pub fn chat<F: Fn(&str) -> ()>(
+    //    &mut self,
+    //    model: OpenAIModel,
+    //    role: Role,
+    //    message: impl Into<String>,
+    //    f: &F,
+    //) -> Result<String> {
+    //    let message: String = message.into();
+    //    self.history.push_request(message.clone(), role);
+    //    let request = self.make_stream_request(model);
+    //    let client = match &self.proxy_url {
+    //        Some(proxy_url) => Self::client_with_proxy(f, proxy_url.as_str()),
+    //        None => Self::client(f),
+    //    };
+    //    let result = client
+    //        .bearer_auth(self.api_key.key())
+    //        .post()
+    //        .json(&request)
+    //        .handle_event()
+    //        .map_err(|e| GptClientError {
+    //            message: "Cause Error at GptClient::chat".to_string(),
+    //            kind: GptClientErrorKind::RequestError(e.to_string()),
+    //        })?;
+    //    //match result {
+    //    //    Connecte => Ok("".to_string()),
+    //    //    SseResult::Retry => self.chat(model, Role::User, message, f),
+    //    //    SseResult::Finished(c) => {
+    //    //        self.history.push_response(c);
+    //    //        Ok(self.history.last_response().unwrap().to_string())
+    //    //    }
+    //    //}
+    //}
     fn make_stream_request(&mut self, model: OpenAIModel) -> ChatRequest {
         let messages = self.history.all();
         ChatRequest {
@@ -73,19 +76,17 @@ impl GptClient {
             stream: true,
         }
     }
-    fn client_with_proxy<F: Fn(&str) -> ()>(
-        f: F,
-        proxy_url: impl Into<String>,
-    ) -> SseClient<ChatHandler<F>, ChatErrorHandler, ChatResponse> {
-        SseClient::new(Self::URL, ChatHandler::new(f), ChatErrorHandler::new())
-            .unwrap()
-            .set_proxy_url(proxy_url.into().as_str())
-    }
-    fn client<F: Fn(&str) -> ()>(
-        f: F,
-    ) -> SseClient<ChatHandler<F>, ChatErrorHandler, ChatResponse> {
-        SseClient::new(Self::URL, ChatHandler::new(f), ChatErrorHandler::new()).unwrap()
-    }
+    //fn client_with_proxy<F: Fn(&str) -> ()>(
+    //    f: F,
+    //    proxy_url: impl Into<String>,
+    //) -> SseClient<ChatHandler<F>, ChatErrorHandler, ChatResponse> {
+    //    SseClient::new(Self::URL, ChatHandler::new(f), ChatErrorHandler::new())
+    //        .unwrap()
+    //        .set_proxy_url(proxy_url.into().as_str())
+    //}
+    //    fn client<F: Fn(&str) -> ()>(f: F) -> SseClient<SseTlsConnector> {
+    //        SseClientBuilder::new(Self::URL).post().json(&request).build()
+    //    }
 }
 #[derive(Debug)]
 pub struct ChatHandler<F: Fn(&str) -> ()> {
@@ -101,84 +102,84 @@ impl<F: Fn(&str) -> ()> ChatHandler<F> {
         }
     }
 }
-impl<F: Fn(&str) -> ()> EventHandler<ChatResponse> for ChatHandler<F> {
-    type Err = GptClientError;
-    fn finished(&self) -> std::result::Result<SseResult<ChatResponse>, Self::Err> {
-        Ok(SseResult::Finished(self.stream.borrow().gen_response()))
-    }
-    fn handle(&self, event: &str) -> std::result::Result<SseResult<ChatResponse>, Self::Err> {
-        let chat: serde_json::Result<StreamChat> = serde_json::from_str(event);
-        match chat {
-            Ok(chat) => {
-                let Some(response ) =  chat.last_response() else {
-                    return Ok(SseResult::Continue);
-                };
-                (self.f)(response.as_str());
-                self.stream.borrow_mut().join_response(response.as_str());
-                Ok(SseResult::Continue)
-            }
-            Err(e) => {
-                if event == Self::GPT_DONE {
-                    return self.finished();
-                }
-                return Err(GptClientError {
-                    message: e.to_string(),
-                    kind: GptClientErrorKind::ResponseDeserializeError(event.to_string()),
-                });
-            }
-        }
-    }
-}
+//impl<F: Fn(&str) -> ()> EventHandler<ChatResponse> for ChatHandler<F> {
+//    type Err = GptClientError;
+//    fn finished(&self) -> std::result::Result<SseResult<ChatResponse>, Self::Err> {
+//        Ok(SseResult::Finished(self.stream.borrow().gen_response()))
+//    }
+//    fn handle(&self, event: &str) -> std::result::Result<SseResult<ChatResponse>, Self::Err> {
+//        let chat: serde_json::Result<StreamChat> = serde_json::from_str(event);
+//        match chat {
+//            Ok(chat) => {
+//                let Some(response ) =  chat.last_response() else {
+//                    return Ok(SseResult::Continue);
+//                };
+//                (self.f)(response.as_str());
+//                self.stream.borrow_mut().join_response(response.as_str());
+//                Ok(SseResult::Continue)
+//            }
+//            Err(e) => {
+//                if event == Self::GPT_DONE {
+//                    return self.finished();
+//                }
+//                return Err(GptClientError {
+//                    message: e.to_string(),
+//                    kind: GptClientErrorKind::ResponseDeserializeError(event.to_string()),
+//                });
+//            }
+//        }
+//    }
+//}
 
 #[derive(Debug)]
 struct ChatErrorHandler {
     err_counter: RefCell<usize>,
 }
 
-impl ErrorHandler<ChatResponse> for ChatErrorHandler {
-    type Err = GptClientError;
-    fn catch(
-        &self,
-        error: rsse::SseHandlerError,
-    ) -> std::result::Result<SseResult<ChatResponse>, Self::Err> {
-        let mut err_counter = self.err_counter.borrow_mut();
-        *err_counter += 1;
-        match error {
-            rsse::SseHandlerError::HttpResponseError {
-                message,
-                read_line,
-                response,
-            } => {
-                if *err_counter > 3 {
-                    return Err(GptClientError {
-                        message: "Cause Error at ChatErrorHandler::catch".to_string(),
-                        kind: GptClientErrorKind::RequestError(read_line),
-                    });
-                }
-                return Err(GptClientError {
-                    message: message,
-                    kind: GptClientErrorKind::RequestError(response.status_text().to_string()),
-                });
-            }
-            _ => {
-                if *err_counter > 3 {
-                    return Err(GptClientError {
-                        message: "Cause Error at ChatErrorHandler::catch".to_string(),
-                        kind: GptClientErrorKind::RequestError(error.to_string()),
-                    });
-                }
-                return Ok(SseResult::Retry);
-            }
-        }
-    }
-}
-impl ChatErrorHandler {
-    fn new() -> Self {
-        Self {
-            err_counter: RefCell::new(0),
-        }
-    }
-}
+//impl ErrorHandler<ChatResponse> for ChatErrorHandler {
+//    type Err = GptClientError;
+//    fn catch(
+//        &self,
+//        error: rsse::SseHandlerError,
+//    ) -> std::result::Result<SseResult<ChatResponse>, Self::Err> {
+//        let mut err_counter = self.err_counter.borrow_mut();
+//        *err_counter += 1;
+//        match error {
+//            rsse::SseHandlerError::HttpResponseError {
+//                message,
+//                read_line,
+//                response,
+//            } => {
+//                if *err_counter > 3 {
+//                    return Err(GptClientError {
+//                        message: "Cause Error at ChatErrorHandler::catch".to_string(),
+//                        kind: GptClientErrorKind::RequestError(read_line),
+//                    });
+//                }
+//                return Err(GptClientError {
+//                    message: message,
+//                    kind: GptClientErrorKind::RequestError(response.status_text().to_string()),
+//                });
+//            }
+//            _ => {
+//                if *err_counter > 3 {
+//                    return Err(GptClientError {
+//                        message: "Cause Error at ChatErrorHandler::catch".to_string(),
+//                        kind: GptClientErrorKind::RequestError(error.to_string()),
+//                    });
+//                }
+//                return Ok(SseResult::Retry);
+//            }
+//        }
+//    }
+//}
+//impl ChatErrorHandler {
+//    fn new() -> Self {
+//        Self {
+//            err_counter: RefCell::new(0),
+//        }
+//    }
+//}
 
 #[derive(Debug)]
 pub struct GptClientError {

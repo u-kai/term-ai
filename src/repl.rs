@@ -27,25 +27,25 @@ impl GptChat {
         Ok(Self { client, model })
     }
 }
-impl GptMessageHandler<GptClientError> for GptChat {
-    fn clear_history(&mut self) {
-        self.client.clear_history();
-    }
-    fn handle<F>(&mut self, message: &str, f: &F) -> Result<(), GptClientError>
-    where
-        F: Fn(&str),
-    {
-        self.client.chat(self.model, Role::User, message, f)?;
-        Ok(())
-    }
-}
+//impl GptMessageHandler<GptClientError> for GptChat {
+//    fn clear_history(&mut self) {
+//        self.client.clear_history();
+//    }
+//    fn handle<F>(&mut self, message: &str, f: &F) -> Result<(), GptClientError>
+//    where
+//        F: Fn(&str),
+//    {
+//        self.client.chat(self.model, Role::User, message, f)?;
+//        Ok(())
+//    }
+//}
 
-impl GptRepl<GptClientError, GptChat> {
-    pub fn from_env(model: OpenAIModel) -> Result<Self, crate::gpt::GptClientError> {
-        let chat = GptChat::from_env(model)?;
-        Ok(Self::new(chat))
-    }
-}
+//impl GptRepl<GptClientError, GptChat> {
+//    pub fn from_env(model: OpenAIModel) -> Result<Self, crate::gpt::GptClientError> {
+//        let chat = GptChat::from_env(model)?;
+//        Ok(Self::new(chat))
+//    }
+//}
 
 impl<E: std::error::Error, T: GptMessageHandler<E>> GptRepl<E, T> {
     pub fn new(c: T) -> Self {
