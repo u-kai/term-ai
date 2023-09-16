@@ -98,20 +98,40 @@ pub struct GptClient {
 }
 impl GptClient {
     const URL: &'static str = "https://api.openai.com/v1/chat/completions";
+    pub fn new(key: OpenAIKey) -> Self {
+        let sse_client = Self::client();
+        Self { key, sse_client }
+    }
     pub fn from_env() -> Result<Self> {
         let key = OpenAIKey::from_env()?;
         let sse_client = Self::client();
         Ok(Self { key, sse_client })
+    }
+    pub fn request_mut_fn<F: FnMut(&ChatResponse) -> HandleResult>(
+        &mut self,
+        request: ChatRequest,
+        mut f: F,
+    ) -> Result<()> {
+        self.send_before(request);
+        self.sse_client
+            .send_mut_fn(|sse_response| {
+                let res = ChatResponse::from_sse(sse_response);
+                match res {
+                    Ok(res) => {
+                        let result = f(&res);
+                        HandleProgress::from(result)
+                    }
+                    Err(e) => HandleProgress::Err(e),
+                }
+            })
+            .map_err(|e| GptClientError::from(e))
     }
     pub fn request_mut<R, T: StreamChatMutHandler<R>>(
         &mut self,
         request: ChatRequest,
         handler: &mut GptSseMutHandler<R, T>,
     ) -> Result<R> {
-        self.sse_client
-            .post()
-            .bearer_auth(self.key.key())
-            .json(request);
+        self.send_before(request);
         self.sse_client
             .send_mut(handler)
             .map_err(|e| GptClientError::from(e))
@@ -121,13 +141,13 @@ impl GptClient {
         request: ChatRequest,
         handler: &GptSseHandler<R, T>,
     ) -> Result<R> {
-        self.sse_client
-            .post()
-            .bearer_auth(self.key.key())
-            .json(request);
+        self.send_before(request);
         self.sse_client
             .send(handler)
             .map_err(|e| GptClientError::from(e))
+    }
+    fn send_before(&mut self, req: ChatRequest) {
+        self.sse_client.post().bearer_auth(self.key.key()).json(req);
     }
     fn client() -> SseClient<SseTlsConnector> {
         SseClientBuilder::new(&Self::URL.try_into().unwrap()).build()
@@ -517,7 +537,7 @@ mod tests {
 }
 
 #[cfg(test)]
-pub(crate) mod fakes {
+pub mod fakes {
     use std::{cell::RefCell, io::Write};
 
     use super::*;
