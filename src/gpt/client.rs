@@ -166,28 +166,28 @@ impl ChatResponse {
     }
 }
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
-pub struct StreamChat {
-    pub choices: Vec<StreamChatChoices>,
-    pub created: usize,
-    pub id: String,
-    pub model: String,
-    pub object: String,
+pub(crate) struct StreamChat {
+    choices: Vec<StreamChatChoices>,
+    created: usize,
+    id: String,
+    model: String,
+    object: String,
 }
 impl StreamChat {
-    pub fn last_response(mut self) -> Option<String> {
+    fn last_response(mut self) -> Option<String> {
         self.choices.pop()?.delta.content
     }
 }
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
-pub struct StreamChatChoices {
-    pub delta: StreamChatChoicesDelta,
-    pub finish_reason: serde_json::Value,
-    pub index: usize,
+struct StreamChatChoices {
+    delta: StreamChatChoicesDelta,
+    finish_reason: serde_json::Value,
+    index: usize,
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
-pub struct StreamChatChoicesDelta {
-    pub content: Option<String>,
+struct StreamChatChoicesDelta {
+    content: Option<String>,
 }
 impl From<StreamChat> for ChatResponse {
     fn from(s: StreamChat) -> Self {
@@ -203,10 +203,10 @@ impl<T: Into<String>> From<T> for ChatResponse {
     }
 }
 #[derive(Clone)]
-struct OpenAIKey(String);
+pub struct OpenAIKey(String);
 
 impl OpenAIKey {
-    fn from_env() -> Result<Self> {
+    pub fn from_env() -> Result<Self> {
         Ok(Self(std::env::var("OPENAI_API_KEY").map_err(|_| {
             GptClientError::new(
                 "OPENAI_API_KEY is not found".to_string(),
@@ -214,7 +214,7 @@ impl OpenAIKey {
             )
         })?))
     }
-    fn new(key: impl Into<String>) -> Self {
+    pub fn new(key: impl Into<String>) -> Self {
         Self(key.into())
     }
     fn key(&self) -> &str {
@@ -239,13 +239,10 @@ pub struct ChatRequest {
     stream: bool,
 }
 impl ChatRequest {
-    fn user_gpt3(message: &str) -> Self {
+    pub fn new(model: OpenAIModel, messages: Vec<Message>) -> Self {
         Self {
-            model: OpenAIModel::Gpt3Dot5Turbo,
-            messages: vec![Message {
-                role: Role::User,
-                content: message.to_string(),
-            }],
+            model,
+            messages,
             stream: true,
         }
     }
@@ -407,7 +404,16 @@ mod tests {
         let mut client = GptClient::from_env().unwrap();
         let handler = GptSseHandler::new(MockHandler::new());
 
-        let result = client.request(ChatRequest::user_gpt3("日本語で絶対返事してね!"), &handler);
+        let result = client.request(
+            ChatRequest::new(
+                OpenAIModel::Gpt3Dot5Turbo,
+                vec![Message::new(
+                    Role::User,
+                    "日本語で絶対返事してね!".to_string(),
+                )],
+            ),
+            &handler,
+        );
 
         assert!(result.as_ref().unwrap().len() > 0);
         assert!(handler.handler().called_time() > 0);
@@ -416,7 +422,11 @@ mod tests {
             assert!(!c.is_ascii());
         }
 
-        let result = client.request(ChatRequest::user_gpt3("Hello World"), &handler);
+        let req = ChatRequest::new(
+            OpenAIModel::Gpt3Dot5Turbo,
+            vec![Message::new(Role::User, "Hello World".to_string())],
+        );
+        let result = client.request(req, &handler);
 
         assert!(result.unwrap().len() > 0);
         assert!(handler.handler().called_time() > 0);
@@ -488,7 +498,7 @@ mod tests {
 }
 
 #[cfg(test)]
-pub mod fakes {
+pub(crate) mod fakes {
     use std::{cell::RefCell, io::Write};
 
     use super::*;
@@ -576,7 +586,7 @@ pub mod fakes {
             message
         )
     }
-    pub fn make_stream_chat(message: &str) -> StreamChat {
+    pub(crate) fn make_stream_chat(message: &str) -> StreamChat {
         serde_json::from_str(&make_stream_chat_json(message)).unwrap()
     }
 }
