@@ -1,5 +1,6 @@
 use super::client::{
-    ChatRequest, ChatResponse, GptClient, GptClientError, HandleResult, Message, OpenAIModel, Role,
+    ChatRequest, ChatResponse, GptClient, GptClientError, HandleResult, Message, OpenAIKey,
+    OpenAIModel, Role,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -46,6 +47,9 @@ impl ChatManager {
             delta_store: DeltaContentStore::new(),
         }
     }
+    pub fn make_request(&self, model: OpenAIModel) -> ChatRequest {
+        ChatRequest::new(model, self.history.all())
+    }
     pub fn update_by_request(&mut self, message: impl Into<String>, role: Role) {
         self.history.push_request(message, role);
     }
@@ -87,6 +91,12 @@ pub struct ChatGpt {
     manager: ChatManager,
 }
 impl ChatGpt {
+    pub fn new(key: OpenAIKey) -> Self {
+        Self {
+            client: GptClient::new(key),
+            manager: ChatManager::new(),
+        }
+    }
     pub fn from_env() -> Result<Self, GptClientError> {
         Ok(Self {
             client: GptClient::from_env()?,
@@ -98,11 +108,23 @@ impl ChatGpt {
         message: impl Into<String>,
         mut f: F,
     ) {
+        self.chat(message, OpenAIModel::Gpt3Dot5Turbo, f)
+    }
+    pub fn chat_gpt4<F: FnMut(&ChatResponse) -> HandleResult>(
+        &mut self,
+        message: impl Into<String>,
+        mut f: F,
+    ) {
+        self.chat(message, OpenAIModel::Gpt4, f)
+    }
+    pub fn chat<F: FnMut(&ChatResponse) -> HandleResult>(
+        &mut self,
+        message: impl Into<String>,
+        model: OpenAIModel,
+        mut f: F,
+    ) {
         self.manager.update_by_request(message, Role::User);
-        let req = ChatRequest::new(
-            OpenAIModel::Gpt3Dot5Turbo,
-            vec![Message::new(Role::User, self.manager.last_response())],
-        );
+        let req = self.manager.make_request(model);
         self.client.request_mut_fn(req, |res| {
             self.manager.update_by_response(res);
             f(res)
@@ -118,8 +140,6 @@ impl ChatGpt {
 
 #[cfg(test)]
 mod tests {
-
-    use crate::gpt::client::{fakes::MockMutHandler, StreamChatMutHandler};
 
     use super::*;
     #[test]
@@ -141,6 +161,38 @@ mod tests {
             &Message::new(Role::User, "こんにちは")
         );
         assert_eq!(sut.last_response(), buf);
+    }
+    #[test]
+    #[allow(non_snake_case)]
+    fn chat_managerは全ての履歴と次のリクエストメッセージからChatRequestを作成する() {
+        let gpt3 = OpenAIModel::Gpt3Dot5Turbo;
+        let mut sut = ChatManager::new();
+
+        sut.update_by_request("こんにちは", Role::User);
+
+        let req = sut.make_request(gpt3);
+        assert_eq!(
+            req,
+            ChatRequest::new(gpt3, vec![Message::new(Role::User, "こんにちは")])
+        );
+
+        sut.update_by_response(&ChatResponse::DeltaContent("hello".to_string()));
+        sut.update_by_response(&ChatResponse::DeltaContent(" world".to_string()));
+        sut.update_by_response(&ChatResponse::Done);
+
+        sut.update_by_request("僕ってかっこいいですか？", Role::User);
+        let req = sut.make_request(gpt3);
+        assert_eq!(
+            req,
+            ChatRequest::new(
+                gpt3,
+                vec![
+                    Message::new(Role::User, "こんにちは"),
+                    Message::new(Role::Assistant, "hello world"),
+                    Message::new(Role::User, "僕ってかっこいいですか？"),
+                ]
+            )
+        );
     }
     #[test]
     fn chat_managerはsseレスポンスからhistoryを更新する() {

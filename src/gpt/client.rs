@@ -271,7 +271,7 @@ impl Display for OpenAIKey {
     }
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
 pub struct ChatRequest {
     model: OpenAIModel,
     messages: Vec<Message>,
@@ -325,7 +325,7 @@ impl serde::Serialize for Role {
         serializer.serialize_str(role)
     }
 }
-#[derive(Debug, Clone, Copy, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, serde::Deserialize, PartialEq, Eq)]
 pub enum OpenAIModel {
     Gpt3Dot5Turbo,
     Gpt4,
