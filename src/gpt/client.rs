@@ -8,7 +8,7 @@ use rsse::{
     sse::{
         connector::SseTlsConnector,
         response::SseResponse,
-        subscriber::{HandleProgress, SseHandler, SseMutHandler},
+        subscriber::{HandleProgress, SseHandler, SseMutHandler, SseSubscribeError},
     },
 };
 
@@ -112,8 +112,9 @@ impl GptClient {
             .post()
             .bearer_auth(self.key.key())
             .json(request);
-        let result = self.sse_client.send(handler);
-        Ok(result.unwrap())
+        self.sse_client
+            .send(handler)
+            .map_err(|e| GptClientError::from(e))
     }
     fn client() -> SseClient<SseTlsConnector> {
         SseClientBuilder::new(&Self::URL.try_into().unwrap()).build()
@@ -336,6 +337,25 @@ impl GptClientError {
         Self { message, kind }
     }
 }
+impl From<SseSubscribeError<GptClientError>> for GptClientError {
+    fn from(e: SseSubscribeError<GptClientError>) -> Self {
+        match e {
+            SseSubscribeError::HandlerError(e) => e,
+            SseSubscribeError::InvalidUrl(s) => GptClientError {
+                message: s.clone(),
+                kind: GptClientErrorKind::InvalidUrl(s),
+            },
+            SseSubscribeError::HttpError(e) => GptClientError {
+                message: e.to_string(),
+                kind: GptClientErrorKind::RequestError(e.to_string()),
+            },
+            SseSubscribeError::ConnectionError(e) => GptClientError {
+                message: e.to_string(),
+                kind: GptClientErrorKind::RequestError(e.to_string()),
+            },
+        }
+    }
+}
 
 impl Display for GptClientError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -344,6 +364,7 @@ impl Display for GptClientError {
 }
 #[derive(Debug)]
 pub enum GptClientErrorKind {
+    InvalidUrl(String),
     ParseError(String),
     NotFoundEnvAPIKey,
     NotFoundResponseContent,
@@ -366,6 +387,7 @@ impl Display for GptClientErrorKind {
             }
             Self::ResponseError(s) => format!("Response Error. Error is : {}", s),
             Self::ParseError(s) => format!("Parse Error. Error is : {}", s),
+            Self::InvalidUrl(s) => format!("Invalid Url. Url is : {}", s),
         };
         write!(f, "{}", kind)
     }
