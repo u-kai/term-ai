@@ -96,17 +96,23 @@ impl ChatGpt {
     pub fn chat_gpt3<F: FnMut(&ChatResponse) -> HandleResult>(
         &mut self,
         message: impl Into<String>,
-        f: F,
+        mut f: F,
     ) {
         self.manager.update_by_request(message, Role::User);
         let req = ChatRequest::new(
             OpenAIModel::Gpt3Dot5Turbo,
             vec![Message::new(Role::User, self.manager.last_response())],
         );
-        self.client.request_mut_fn(req, f);
+        self.client.request_mut_fn(req, |res| {
+            self.manager.update_by_response(res);
+            f(res)
+        });
     }
     pub fn last_request(&self) -> Option<&Message> {
         self.manager.last_request()
+    }
+    pub fn last_response(&self) -> &str {
+        self.manager.last_response()
     }
 }
 
@@ -120,21 +126,21 @@ mod tests {
     #[ignore = "gpt3のapiを叩くので、テストはスキップ"]
     fn gptとchatが可能() {
         let mut sut = ChatGpt::from_env().unwrap();
-        let mut handler = MockMutHandler::new();
+        let mut buf = String::new();
 
-        sut.chat_gpt3("こんにちは", |res| {
-            handler.handle(&res);
-            match res {
-                ChatResponse::DeltaContent(s) => HandleResult::Progress,
-                ChatResponse::Done => HandleResult::Done,
+        sut.chat_gpt3("こんにちは", |res| match res {
+            ChatResponse::DeltaContent(s) => {
+                buf.push_str(s);
+                HandleResult::Progress
             }
+            ChatResponse::Done => HandleResult::Done,
         });
 
-        assert!(handler.called_time() > 0);
         assert_eq!(
             sut.last_request().unwrap(),
             &Message::new(Role::User, "こんにちは")
         );
+        assert_eq!(sut.last_response(), buf);
     }
     #[test]
     fn chat_managerはsseレスポンスからhistoryを更新する() {
