@@ -12,11 +12,11 @@ use rsse::{
     },
 };
 
-pub struct ChatGptSseHandler<R, T: StreamChatHandler<R>> {
+pub struct GptSseHandler<R, T: StreamChatHandler<R>> {
     handler: T,
     _phantom: PhantomData<R>,
 }
-impl<R, T: StreamChatHandler<R>> ChatGptSseHandler<R, T> {
+impl<R, T: StreamChatHandler<R>> GptSseHandler<R, T> {
     pub fn new(handler: T) -> Self {
         Self {
             handler,
@@ -27,7 +27,7 @@ impl<R, T: StreamChatHandler<R>> ChatGptSseHandler<R, T> {
         &self.handler
     }
 }
-impl<R, T: StreamChatHandler<R>> SseHandler<R, ()> for ChatGptSseHandler<R, T> {
+impl<R, T: StreamChatHandler<R>> SseHandler<R, ()> for GptSseHandler<R, T> {
     fn handle(&self, res: SseResponse) -> rsse::sse::subscriber::HandleProgress<()> {
         let res = ChatResponse::from_sse(res).unwrap();
         match self.handler.handle(&res) {
@@ -48,11 +48,11 @@ pub enum HandleResult {
     Done,
 }
 
-pub struct ChatGptClient {
+pub struct GptClient {
     key: OpenAIKey,
     sse_client: SseClient<SseTlsConnector>,
 }
-impl ChatGptClient {
+impl GptClient {
     const URL: &'static str = "https://api.openai.com/v1/chat/completions";
     pub fn from_env() -> Result<Self> {
         let key = OpenAIKey::from_env()?;
@@ -62,7 +62,7 @@ impl ChatGptClient {
     pub fn chat<R, T: StreamChatHandler<R>>(
         &mut self,
         request: ChatRequest,
-        handler: &ChatGptSseHandler<R, T>,
+        handler: &GptSseHandler<R, T>,
     ) -> Result<R> {
         self.sse_client
             .post()
@@ -333,8 +333,8 @@ mod tests {
     #[test]
     #[ignore = "実際に通信するので、CIでのテストは行わない"]
     fn chat_gptと実際の通信を行うことが可能() {
-        let mut client = ChatGptClient::from_env().unwrap();
-        let handler = ChatGptSseHandler::new(MockHandler::new());
+        let mut client = GptClient::from_env().unwrap();
+        let handler = GptSseHandler::new(MockHandler::new());
 
         let result = client.chat(ChatRequest::user_gpt3("日本語で絶対返事してね!"), &handler);
 
@@ -354,7 +354,7 @@ mod tests {
     #[test]
     fn chat_gpt_sse_handlerはchat_gptからのレスポンス終了時に任意の値を返すことができる() {
         let handler = MockHandler::new();
-        let handler = ChatGptSseHandler::new(handler);
+        let handler = GptSseHandler::new(handler);
         handler.handle(SseResponse::Data(make_stream_chat_json("Hello World")));
         handler.handle(SseResponse::Data(make_stream_chat_json(" Good Bye")));
 
@@ -365,7 +365,7 @@ mod tests {
     #[test]
     fn chat_gpt_sse_handlerはchat_gptからのsseレスポンスを処理して内部のhandlerに渡す() {
         let handler = MockHandler::new();
-        let handler = ChatGptSseHandler::new(handler);
+        let handler = GptSseHandler::new(handler);
 
         let progress = handler.handle(SseResponse::Data(make_stream_chat_json("Hello World")));
 
