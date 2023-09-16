@@ -88,20 +88,20 @@ impl GptClient {
     //        SseClientBuilder::new(Self::URL).post().json(&request).build()
     //    }
 }
-#[derive(Debug)]
-pub struct ChatHandler<F: Fn(&str) -> ()> {
-    f: F,
-    stream: RefCell<ChatStream>,
-}
-impl<F: Fn(&str) -> ()> ChatHandler<F> {
-    const GPT_DONE: &'static str = "[DONE]";
-    pub fn new(f: F) -> Self {
-        Self {
-            f,
-            stream: RefCell::new(ChatStream::new()),
-        }
-    }
-}
+//#[derive(Debug)]
+//pub struct ChatHandler<F: Fn(&str) -> ()> {
+//    f: F,
+//    stream: RefCell<ChatStream>,
+//}
+//impl<F: Fn(&str) -> ()> ChatHandler<F> {
+//    const GPT_DONE: &'static str = "[DONE]";
+//    pub fn new(f: F) -> Self {
+//        Self {
+//            f,
+//            stream: RefCell::new(ChatStream::new()),
+//        }
+//    }
+//}
 //impl<F: Fn(&str) -> ()> EventHandler<ChatResponse> for ChatHandler<F> {
 //    type Err = GptClientError;
 //    fn finished(&self) -> std::result::Result<SseResult<ChatResponse>, Self::Err> {
@@ -290,7 +290,18 @@ impl ChatStream {
     }
 }
 #[derive(Debug, Clone)]
-struct ChatResponse(String);
+pub struct ChatResponse(String);
+impl ChatResponse {
+    fn last_answer(&self) -> &str {
+        self.0.as_str()
+    }
+}
+impl From<StreamChat> for ChatResponse {
+    fn from(s: StreamChat) -> Self {
+        s.last_response()
+            .map_or_else(|| Self(String::new()), |s| Self(s))
+    }
+}
 #[derive(Clone)]
 struct OpenAIKey(String);
 
@@ -404,9 +415,100 @@ fn proxy_from_env() -> Option<String> {
     }
 }
 
+pub struct ChatGptClient<T: ChatGpt> {
+    gpt: T,
+}
+impl<T: ChatGpt> ChatGptClient<T> {
+    pub fn new(gpt: T) -> Self {
+        Self { gpt }
+    }
+    //pub fn chat(&mut self, message: impl Into<String>, handler: &impl StreamChatHandler) {
+    //    self.gpt.chat(message.into());
+    //}
+}
+pub trait ChatGpt {}
+pub trait StreamChatHandler {
+    fn handle(&self, res: &ChatResponse);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct FakeChatGpt {
+        responses: Vec<String>,
+        request_count: usize,
+    }
+    impl FakeChatGpt {
+        fn new() -> Self {
+            Self {
+                responses: Vec::new(),
+                request_count: 0,
+            }
+        }
+        fn set_chat_response(&mut self, response: impl Into<String>) {
+            self.responses.push(response.into());
+        }
+        fn request_count(&self) -> usize {
+            self.request_count
+        }
+    }
+    impl ChatGpt for FakeChatGpt {}
+    struct MockHandler {
+        called_time: RefCell<usize>,
+    }
+    impl MockHandler {
+        fn new() -> Self {
+            Self {
+                called_time: RefCell::new(0),
+            }
+        }
+        fn called_time(&self) -> usize {
+            *self.called_time.borrow()
+        }
+        fn inc_called_time(&self) {
+            *self.called_time.borrow_mut() += 1;
+        }
+    }
+
+    #[test]
+    #[allow(non_snake_case)]
+    fn chat_gptのレスポンスはChatResponseに変換可能() {
+        let response = r#"
+            {
+              "id": "chatcmpl-xxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+              "object": "chat.completion.chunk",
+              "created": 1694832938,
+              "model": "gpt-3.5-turbo-0613",
+              "choices": [
+                { "index": 0, "delta": { "content": "Hello World" }, "finish_reason": null }
+              ]
+            }"#;
+        let response: StreamChat = serde_json::from_str(response).unwrap();
+        let response = ChatResponse::from(response);
+        assert_eq!(response.last_answer(), "Hello World");
+    }
+
+    impl StreamChatHandler for MockHandler {
+        fn handle(&self, res: &ChatResponse) {
+            self.inc_called_time();
+        }
+    }
+    //#[test]
+    //fn gptのsseレスポンスを随時処理する() {
+    //    let mock_handler = MockHandler::new();
+
+    //    let mut fake = FakeChatGpt::new();
+    //    fake.set_chat_response("hello ");
+    //    fake.set_chat_response("i ");
+    //    fake.set_chat_response("am ");
+    //    fake.set_chat_response("gpt.");
+
+    //    let mut client = ChatGptClient::new(fake);
+
+    //    client.chat("hello", &mock_handler);
+    //    assert_eq!(mock_handler.called_time(), 4);
+    //}
     #[test]
     fn test_clear() {
         let mut chat_history = ChatHistory::new();
