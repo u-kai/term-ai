@@ -191,6 +191,11 @@ pub struct GptClientError {
     message: String,
     kind: GptClientErrorKind,
 }
+impl GptClientError {
+    pub fn new(message: String, kind: GptClientErrorKind) -> Self {
+        Self { message, kind }
+    }
+}
 
 impl Display for GptClientError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -339,6 +344,14 @@ impl<T: Into<String>> From<T> for ChatResponse {
 struct OpenAIKey(String);
 
 impl OpenAIKey {
+    fn from_env() -> Result<Self> {
+        Ok(Self(std::env::var("OPENAI_API_KEY").map_err(|_| {
+            GptClientError::new(
+                "OPENAI_API_KEY is not found".to_string(),
+                GptClientErrorKind::NotFoundEnvAPIKey,
+            )
+        })?))
+    }
     fn new(key: impl Into<String>) -> Self {
         Self(key.into())
     }
@@ -362,6 +375,18 @@ struct ChatRequest {
     model: OpenAIModel,
     messages: Vec<Message>,
     stream: bool,
+}
+impl ChatRequest {
+    fn user_gpt3(message: &str) -> Self {
+        Self {
+            model: OpenAIModel::Gpt3Dot5Turbo,
+            messages: vec![Message {
+                role: Role::User,
+                content: message.to_string(),
+            }],
+            stream: true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
@@ -507,6 +532,34 @@ pub enum HandleResult {
     Done,
 }
 
+pub struct ChatGptClient {
+    key: OpenAIKey,
+    sse_client: SseClient<SseTlsConnector>,
+}
+impl ChatGptClient {
+    const URL: &'static str = "https://api.openai.com/v1/chat/completions";
+    pub fn from_env() -> Result<Self> {
+        let key = OpenAIKey::from_env()?;
+        let sse_client = Self::client();
+        Ok(Self { key, sse_client })
+    }
+    pub fn chat<T: StreamChatHandler<String>>(
+        &mut self,
+        message: &str,
+        handler: &ChatGptSseHandler<String, T>,
+    ) -> Result<String> {
+        self.sse_client
+            .post()
+            .bearer_auth(self.key.key())
+            .json(ChatRequest::user_gpt3(message));
+        let result = self.sse_client.send(handler);
+        Ok(result.unwrap())
+    }
+    fn client() -> SseClient<SseTlsConnector> {
+        SseClientBuilder::new(&Self::URL.try_into().unwrap()).build()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use rsse::sse::{response::SseResponse, subscriber::HandleProgress};
@@ -514,6 +567,27 @@ mod tests {
     use crate::gpt::fakes::{make_stream_chat, make_stream_chat_json};
 
     use super::{fakes::MockHandler, *};
+
+    #[test]
+    #[ignore = "実際に通信するので、CIでのテストは行わない"]
+    fn chat_gptと実際の通信を行うことが可能() {
+        let mut client = ChatGptClient::from_env().unwrap();
+        let handler = ChatGptSseHandler::new(MockHandler::new());
+
+        let result = client.chat("日本語で絶対返事してね!", &handler);
+
+        assert!(result.as_ref().unwrap().len() > 0);
+        assert!(handler.handler().called_time() > 0);
+        for c in result.unwrap().chars() {
+            println!("{}", c);
+            assert!(!c.is_ascii());
+        }
+
+        let result = client.chat("Hello World", &handler);
+
+        assert!(result.unwrap().len() > 0);
+        assert!(handler.handler().called_time() > 0);
+    }
 
     #[test]
     fn chat_gpt_sse_handlerはchat_gptからのレスポンス終了時に任意の値を返すことができる() {
@@ -622,6 +696,8 @@ mod tests {
 
 #[cfg(test)]
 pub mod fakes {
+    use std::io::Write;
+
     use super::*;
     pub struct FakeChatGpt {
         responses: Vec<String>,
@@ -662,6 +738,8 @@ pub mod fakes {
 
     impl StreamChatHandler<String> for MockHandler {
         fn handle(&self, res: &ChatResponse) -> HandleResult {
+            print!("{}", res.delta_content());
+            std::io::stdout().flush().unwrap();
             self.inc_called_time();
             self.responses
                 .borrow_mut()
