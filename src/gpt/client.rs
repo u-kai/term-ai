@@ -27,15 +27,24 @@ impl<R, T: StreamChatHandler<R>> GptSseHandler<R, T> {
         &self.handler
     }
 }
-impl<R, T: StreamChatHandler<R>> SseHandler<R, ()> for GptSseHandler<R, T> {
-    fn handle(&self, res: SseResponse) -> rsse::sse::subscriber::HandleProgress<()> {
-        let res = ChatResponse::from_sse(res).unwrap();
-        match self.handler.handle(&res) {
+
+impl From<HandleResult> for HandleProgress<GptClientError> {
+    fn from(res: HandleResult) -> Self {
+        match res {
             HandleResult::Progress => HandleProgress::Progress,
             HandleResult::Done => HandleProgress::Done,
+            HandleResult::Err(e) => HandleProgress::Err(e),
         }
     }
-    fn result(&self) -> std::result::Result<R, ()> {
+}
+impl<R, T: StreamChatHandler<R>> SseHandler<R, GptClientError> for GptSseHandler<R, T> {
+    fn handle(&self, res: SseResponse) -> rsse::sse::subscriber::HandleProgress<GptClientError> {
+        match ChatResponse::from_sse(res) {
+            Ok(res) => HandleProgress::from(self.handler.handle(&res)),
+            Err(e) => HandleProgress::Err(e),
+        }
+    }
+    fn result(&self) -> Result<R> {
         Ok(self.handler.result())
     }
 }
@@ -55,15 +64,17 @@ impl<R, T: StreamChatMutHandler<R>> GptSseMutHandler<R, T> {
         &self.handler
     }
 }
-impl<R, T: StreamChatMutHandler<R>> SseMutHandler<R, ()> for GptSseMutHandler<R, T> {
-    fn handle(&mut self, res: SseResponse) -> rsse::sse::subscriber::HandleProgress<()> {
-        let res = ChatResponse::from_sse(res).unwrap();
-        match self.handler.handle(&res) {
-            HandleResult::Progress => HandleProgress::Progress,
-            HandleResult::Done => HandleProgress::Done,
+impl<R, T: StreamChatMutHandler<R>> SseMutHandler<R, GptClientError> for GptSseMutHandler<R, T> {
+    fn handle(
+        &mut self,
+        res: SseResponse,
+    ) -> rsse::sse::subscriber::HandleProgress<GptClientError> {
+        match ChatResponse::from_sse(res) {
+            Ok(res) => HandleProgress::from(self.handler.handle(&res)),
+            Err(e) => HandleProgress::Err(e),
         }
     }
-    fn result(&self) -> std::result::Result<R, ()> {
+    fn result(&self) -> Result<R> {
         Ok(self.handler.result())
     }
 }
@@ -78,6 +89,7 @@ pub trait StreamChatMutHandler<T> {
 pub enum HandleResult {
     Progress,
     Done,
+    Err(GptClientError),
 }
 
 pub struct GptClient {
@@ -128,7 +140,7 @@ pub enum ChatResponse {
 }
 impl ChatResponse {
     const GPT_DONE: &'static str = "[DONE]";
-    fn from_sse(sse_res: SseResponse) -> std::result::Result<Self, String> {
+    fn from_sse(sse_res: SseResponse) -> Result<Self> {
         match sse_res {
             SseResponse::Data(data) => {
                 if data.starts_with(Self::GPT_DONE) {
@@ -136,7 +148,10 @@ impl ChatResponse {
                 };
                 match serde_json::from_str::<StreamChat>(&data) {
                     Ok(chat) => Ok(Self::from(chat)),
-                    Err(e) => todo!(),
+                    Err(e) => Err(GptClientError {
+                        message: format!("Failed to parse chat response: {}", e),
+                        kind: GptClientErrorKind::ParseError(data),
+                    }),
                 }
             }
             _ => todo!(),
@@ -329,6 +344,7 @@ impl Display for GptClientError {
 }
 #[derive(Debug)]
 pub enum GptClientErrorKind {
+    ParseError(String),
     NotFoundEnvAPIKey,
     NotFoundResponseContent,
     ReadStreamError(String),
@@ -349,6 +365,7 @@ impl Display for GptClientErrorKind {
                 format!("Not Deserialize response. Serde Error is :  {}", s)
             }
             Self::ResponseError(s) => format!("Response Error. Error is : {}", s),
+            Self::ParseError(s) => format!("Parse Error. Error is : {}", s),
         };
         write!(f, "{}", kind)
     }
