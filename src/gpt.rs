@@ -292,7 +292,7 @@ impl ChatStream {
 #[derive(Debug, Clone)]
 pub struct ChatResponse(String);
 impl ChatResponse {
-    fn last_answer(&self) -> &str {
+    fn delta_content(&self) -> &str {
         self.0.as_str()
     }
 }
@@ -486,7 +486,7 @@ mod tests {
             }"#;
         let response: StreamChat = serde_json::from_str(response).unwrap();
         let response = ChatResponse::from(response);
-        assert_eq!(response.last_answer(), "Hello World");
+        assert_eq!(response.delta_content(), "Hello World");
     }
 
     impl StreamChatHandler for MockHandler {
