@@ -1,6 +1,7 @@
 use std::{
     cell::RefCell,
     fmt::{Debug, Display},
+    marker::PhantomData,
 };
 
 use rsse::{
@@ -447,34 +448,38 @@ fn proxy_from_env() -> Option<String> {
     }
 }
 
-pub struct ChatGptClient<T: ChatGpt> {
-    gpt: T,
-}
-
-impl<T: ChatGpt> ChatGptClient<T> {
-    pub fn new(gpt: T) -> Self {
-        Self { gpt }
-    }
-    pub fn chat<H: StreamChatHandler>(
-        &mut self,
-        message: impl Into<String>,
-        handler: &ChatGptSseHandler<H>,
-    ) {
-        self.gpt.chat(message.into(), handler);
-    }
-}
-pub struct ChatGptSseHandler<T: StreamChatHandler> {
+//pub struct ChatGptClient<T: ChatGpt> {
+//    gpt: T,
+//}
+//
+//impl<T: ChatGpt> ChatGptClient<T> {
+//    pub fn new(gpt: T) -> Self {
+//        Self { gpt }
+//    }
+//    pub fn chat<H: StreamChatHandler>(
+//        &mut self,
+//        message: impl Into<String>,
+//        handler: &ChatGptSseHandler<H>,
+//    ) {
+//        self.gpt.chat(message.into(), handler);
+//    }
+//}
+pub struct ChatGptSseHandler<R, T: StreamChatHandler<R>> {
     handler: T,
+    _phantom: PhantomData<R>,
 }
-impl<T: StreamChatHandler> ChatGptSseHandler<T> {
+impl<R, T: StreamChatHandler<R>> ChatGptSseHandler<R, T> {
     pub fn new(handler: T) -> Self {
-        Self { handler }
+        Self {
+            handler,
+            _phantom: PhantomData,
+        }
     }
     pub fn handler(&self) -> &T {
         &self.handler
     }
 }
-impl<T: StreamChatHandler> SseHandler<String, ()> for ChatGptSseHandler<T> {
+impl<R, T: StreamChatHandler<R>> SseHandler<R, ()> for ChatGptSseHandler<R, T> {
     fn handle(&self, res: SseResponse) -> rsse::sse::subscriber::HandleProgress<()> {
         let res = ChatResponse::from_sse(res).unwrap();
         match self.handler.handle(&res) {
@@ -482,15 +487,20 @@ impl<T: StreamChatHandler> SseHandler<String, ()> for ChatGptSseHandler<T> {
             HandleResult::Done => HandleProgress::Done,
         }
     }
-    fn result(&self) -> std::result::Result<String, ()> {
-        Ok(String::new())
+    fn result(&self) -> std::result::Result<R, ()> {
+        Ok(self.handler.result())
     }
 }
 pub trait ChatGpt {
-    fn chat<T: StreamChatHandler>(&mut self, message: String, handler: &ChatGptSseHandler<T>);
+    fn chat<R, T: StreamChatHandler<R>>(
+        &mut self,
+        message: String,
+        handler: &ChatGptSseHandler<R, T>,
+    );
 }
-pub trait StreamChatHandler {
+pub trait StreamChatHandler<T> {
     fn handle(&self, res: &ChatResponse) -> HandleResult;
+    fn result(&self) -> T;
 }
 pub enum HandleResult {
     Progress,
@@ -507,6 +517,14 @@ mod tests {
 
     #[test]
     fn chat_gpt_sse_handlerはchat_gptからのレスポンス終了時に任意の値を返すことができる() {
+        let handler = MockHandler::new();
+        let handler = ChatGptSseHandler::new(handler);
+        handler.handle(SseResponse::Data(make_stream_chat_json("Hello World")));
+        handler.handle(SseResponse::Data(make_stream_chat_json(" Good Bye")));
+
+        let result = handler.result().unwrap();
+
+        assert_eq!(result, "Hello World Good Bye");
     }
     #[test]
     fn chat_gpt_sse_handlerはchat_gptからのsseレスポンスを処理して内部のhandlerに渡す() {
@@ -625,11 +643,13 @@ pub mod fakes {
     }
     pub struct MockHandler {
         called_time: RefCell<usize>,
+        responses: RefCell<Vec<String>>,
     }
     impl MockHandler {
         pub fn new() -> Self {
             Self {
                 called_time: RefCell::new(0),
+                responses: RefCell::new(Vec::new()),
             }
         }
         pub fn called_time(&self) -> usize {
@@ -640,13 +660,19 @@ pub mod fakes {
         }
     }
 
-    impl StreamChatHandler for MockHandler {
+    impl StreamChatHandler<String> for MockHandler {
         fn handle(&self, res: &ChatResponse) -> HandleResult {
             self.inc_called_time();
+            self.responses
+                .borrow_mut()
+                .push(res.delta_content().to_string());
             match res {
                 ChatResponse::Done => HandleResult::Done,
                 _ => HandleResult::Progress,
             }
+        }
+        fn result(&self) -> String {
+            self.responses.borrow().join("")
         }
     }
     pub fn make_stream_chat_json(message: &str) -> String {
