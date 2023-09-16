@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use crate::gpt::{GptClient, GptClientError, OpenAIModel, Role};
+use crate::gpt::client::{GptClientError, OpenAIModel};
 
 pub struct GptRepl<E: std::error::Error, T: GptMessageHandler<E>> {
     chat: T,
@@ -18,15 +18,15 @@ pub trait GptMessageHandler<E: std::error::Error> {
 
 pub struct GptChat {
     model: OpenAIModel,
-    client: GptClient,
+    //client: GptClient,
 }
 
-impl GptChat {
-    pub fn from_env(model: OpenAIModel) -> Result<Self, crate::gpt::GptClientError> {
-        let client = GptClient::from_env()?;
-        Ok(Self { client, model })
-    }
-}
+//impl GptChat {
+//    pub fn from_env(model: OpenAIModel) -> Result<Self, GptClientError> {
+//        let client = GptClient::from_env()?;
+//        Ok(Self { client, model })
+//    }
+//}
 //impl GptMessageHandler<GptClientError> for GptChat {
 //    fn clear_history(&mut self) {
 //        self.client.clear_history();
