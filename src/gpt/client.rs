@@ -59,7 +59,7 @@ impl GptClient {
         let sse_client = Self::client();
         Ok(Self { key, sse_client })
     }
-    pub fn chat<R, T: StreamChatHandler<R>>(
+    pub fn request<R, T: StreamChatHandler<R>>(
         &mut self,
         request: ChatRequest,
         handler: &GptSseHandler<R, T>,
@@ -332,11 +332,11 @@ mod tests {
 
     #[test]
     #[ignore = "実際に通信するので、CIでのテストは行わない"]
-    fn chat_gptと実際の通信を行うことが可能() {
+    fn gptと実際の通信を行うことが可能() {
         let mut client = GptClient::from_env().unwrap();
         let handler = GptSseHandler::new(MockHandler::new());
 
-        let result = client.chat(ChatRequest::user_gpt3("日本語で絶対返事してね!"), &handler);
+        let result = client.request(ChatRequest::user_gpt3("日本語で絶対返事してね!"), &handler);
 
         assert!(result.as_ref().unwrap().len() > 0);
         assert!(handler.handler().called_time() > 0);
@@ -345,14 +345,14 @@ mod tests {
             assert!(!c.is_ascii());
         }
 
-        let result = client.chat(ChatRequest::user_gpt3("Hello World"), &handler);
+        let result = client.request(ChatRequest::user_gpt3("Hello World"), &handler);
 
         assert!(result.unwrap().len() > 0);
         assert!(handler.handler().called_time() > 0);
     }
 
     #[test]
-    fn chat_gpt_sse_handlerはchat_gptからのレスポンス終了時に任意の値を返すことができる() {
+    fn gpt_sse_handlerはgptからのレスポンス終了時に任意の値を返すことができる() {
         let handler = MockHandler::new();
         let handler = GptSseHandler::new(handler);
         handler.handle(SseResponse::Data(make_stream_chat_json("Hello World")));
@@ -363,7 +363,7 @@ mod tests {
         assert_eq!(result, "Hello World Good Bye");
     }
     #[test]
-    fn chat_gpt_sse_handlerはchat_gptからのsseレスポンスを処理して内部のhandlerに渡す() {
+    fn gpt_sse_handlerはgptからのsseレスポンスを処理して内部のhandlerに渡す() {
         let handler = MockHandler::new();
         let handler = GptSseHandler::new(handler);
 
@@ -378,7 +378,7 @@ mod tests {
     }
     #[test]
     #[allow(non_snake_case)]
-    fn chat_gptのsseレスポンスをChatResponseに変換可能() {
+    fn gptのsseレスポンスをChatResponseに変換可能() {
         let response = SseResponse::Data(make_stream_chat_json("Hello World"));
         assert_eq!(
             ChatResponse::from_sse(response).unwrap().delta_content(),
@@ -387,7 +387,7 @@ mod tests {
     }
     #[test]
     #[allow(non_snake_case)]
-    fn chat_gptのsseレスポンスをChatResponseに変換可能_done() {
+    fn gptのsseレスポンスをChatResponseに変換可能_done() {
         let response = SseResponse::Data("[DONE]".to_string());
         assert_eq!(
             ChatResponse::from_sse(response).unwrap(),
@@ -396,7 +396,7 @@ mod tests {
     }
     #[test]
     #[allow(non_snake_case)]
-    fn chat_gptのレスポンスはChatResponseに変換可能() {
+    fn gptのレスポンスはChatResponseに変換可能() {
         let response = ChatResponse::from(make_stream_chat("Hello World"));
         assert_eq!(response.delta_content(), "Hello World");
     }
