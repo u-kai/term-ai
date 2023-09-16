@@ -1,6 +1,6 @@
 use super::client::{
     ChatRequest, ChatResponse, GptClient, GptClientError, HandleResult, Message, OpenAIKey,
-    OpenAIModel, Role,
+    OpenAIModel, Result, Role,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -67,6 +67,10 @@ impl ChatManager {
     pub fn last_response(&self) -> &str {
         self.history.last_response().unwrap_or("")
     }
+    pub fn clear(&mut self) {
+        self.history.clear();
+        self.delta_store = DeltaContentStore::new();
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -97,7 +101,7 @@ impl ChatGpt {
             manager: ChatManager::new(),
         }
     }
-    pub fn from_env() -> Result<Self, GptClientError> {
+    pub fn from_env() -> Result<Self> {
         Ok(Self {
             client: GptClient::from_env()?,
             manager: ChatManager::new(),
@@ -106,29 +110,32 @@ impl ChatGpt {
     pub fn chat_gpt3<F: FnMut(&ChatResponse) -> HandleResult>(
         &mut self,
         message: impl Into<String>,
-        mut f: F,
-    ) {
+        f: &mut F,
+    ) -> Result<()> {
         self.chat(message, OpenAIModel::Gpt3Dot5Turbo, f)
     }
     pub fn chat_gpt4<F: FnMut(&ChatResponse) -> HandleResult>(
         &mut self,
         message: impl Into<String>,
-        mut f: F,
-    ) {
+        f: &mut F,
+    ) -> Result<()> {
         self.chat(message, OpenAIModel::Gpt4, f)
     }
     pub fn chat<F: FnMut(&ChatResponse) -> HandleResult>(
         &mut self,
         message: impl Into<String>,
         model: OpenAIModel,
-        mut f: F,
-    ) {
+        f: &mut F,
+    ) -> Result<()> {
         self.manager.update_by_request(message, Role::User);
         let req = self.manager.make_request(model);
         self.client.request_mut_fn(req, |res| {
             self.manager.update_by_response(res);
             f(res)
-        });
+        })
+    }
+    pub fn clear(&mut self) {
+        self.manager.clear();
     }
     pub fn last_request(&self) -> Option<&Message> {
         self.manager.last_request()
@@ -148,13 +155,14 @@ mod tests {
         let mut sut = ChatGpt::from_env().unwrap();
         let mut buf = String::new();
 
-        sut.chat_gpt3("こんにちは", |res| match res {
+        sut.chat_gpt3("こんにちは", &mut |res| match res {
             ChatResponse::DeltaContent(s) => {
                 buf.push_str(s);
                 HandleResult::Progress
             }
             ChatResponse::Done => HandleResult::Done,
-        });
+        })
+        .unwrap();
 
         assert_eq!(
             sut.last_request().unwrap(),
