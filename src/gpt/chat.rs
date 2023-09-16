@@ -31,7 +31,7 @@ impl ChatHistory {
 mod tests {
     use super::*;
     #[test]
-    fn test_clear() {
+    fn historyの履歴はクリア可能() {
         let mut chat_history = ChatHistory::new();
         chat_history.push_request("hello", Role::User);
         chat_history.push_response(ChatResponse::from("hello,i am gpt"));
@@ -50,7 +50,7 @@ mod tests {
         assert_eq!(chat_history.all(), vec![]);
     }
     #[test]
-    fn test_last_response() {
+    fn historyの最後のデータを取得可能() {
         let mut chat_history = ChatHistory::new();
         chat_history.push_response(ChatResponse::from("test"));
         assert_eq!(chat_history.last_response(), Some("test"));

@@ -8,7 +8,7 @@ use rsse::{
     sse::{
         connector::SseTlsConnector,
         response::SseResponse,
-        subscriber::{HandleProgress, SseHandler},
+        subscriber::{HandleProgress, SseHandler, SseMutHandler},
     },
 };
 
@@ -39,8 +39,40 @@ impl<R, T: StreamChatHandler<R>> SseHandler<R, ()> for GptSseHandler<R, T> {
         Ok(self.handler.result())
     }
 }
+
+pub struct GptSseMutHandler<R, T: StreamChatMutHandler<R>> {
+    handler: T,
+    _phantom: PhantomData<R>,
+}
+impl<R, T: StreamChatMutHandler<R>> GptSseMutHandler<R, T> {
+    pub fn new(handler: T) -> Self {
+        Self {
+            handler,
+            _phantom: PhantomData,
+        }
+    }
+    pub fn handler(&self) -> &T {
+        &self.handler
+    }
+}
+impl<R, T: StreamChatMutHandler<R>> SseMutHandler<R, ()> for GptSseMutHandler<R, T> {
+    fn handle(&mut self, res: SseResponse) -> rsse::sse::subscriber::HandleProgress<()> {
+        let res = ChatResponse::from_sse(res).unwrap();
+        match self.handler.handle(&res) {
+            HandleResult::Progress => HandleProgress::Progress,
+            HandleResult::Done => HandleProgress::Done,
+        }
+    }
+    fn result(&self) -> std::result::Result<R, ()> {
+        Ok(self.handler.result())
+    }
+}
 pub trait StreamChatHandler<T> {
     fn handle(&self, res: &ChatResponse) -> HandleResult;
+    fn result(&self) -> T;
+}
+pub trait StreamChatMutHandler<T> {
+    fn handle(&mut self, res: &ChatResponse) -> HandleResult;
     fn result(&self) -> T;
 }
 pub enum HandleResult {
@@ -363,6 +395,20 @@ mod tests {
         assert_eq!(result, "Hello World Good Bye");
     }
     #[test]
+    fn gpt_sse_handlerはgptからのsseレスポンスを処理して内部の可変handlerに渡す() {
+        let handler = MockMutHandler::new();
+        let mut handler = GptSseMutHandler::new(handler);
+
+        let progress = handler.handle(SseResponse::Data(make_stream_chat_json("Hello World")));
+
+        matches!(progress, HandleProgress::Progress);
+        assert_eq!(handler.handler().called_time(), 1);
+
+        let done = handler.handle(SseResponse::Data("[DONE]".to_string()));
+        matches!(done, HandleProgress::Done);
+        assert_eq!(handler.handler().called_time(), 2);
+    }
+    #[test]
     fn gpt_sse_handlerはgptからのsseレスポンスを処理して内部のhandlerに渡す() {
         let handler = MockHandler::new();
         let handler = GptSseHandler::new(handler);
@@ -407,6 +453,39 @@ pub mod fakes {
     use std::{cell::RefCell, io::Write};
 
     use super::*;
+    pub struct MockMutHandler {
+        called_time: usize,
+        responses: Vec<String>,
+    }
+    impl MockMutHandler {
+        pub fn new() -> Self {
+            Self {
+                called_time: 0,
+                responses: Vec::new(),
+            }
+        }
+        pub fn called_time(&self) -> usize {
+            self.called_time
+        }
+        fn inc_called_time(&mut self) {
+            self.called_time += 1;
+        }
+    }
+    impl StreamChatMutHandler<String> for MockMutHandler {
+        fn handle(&mut self, res: &ChatResponse) -> HandleResult {
+            print!("{}", res.delta_content());
+            std::io::stdout().flush().unwrap();
+            self.inc_called_time();
+            self.responses.push(res.delta_content().to_string());
+            match res {
+                ChatResponse::Done => HandleResult::Done,
+                _ => HandleResult::Progress,
+            }
+        }
+        fn result(&self) -> String {
+            self.responses.join("")
+        }
+    }
     pub struct MockHandler {
         called_time: RefCell<usize>,
         responses: RefCell<Vec<String>>,
