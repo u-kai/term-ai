@@ -516,13 +516,6 @@ impl<R, T: StreamChatHandler<R>> SseHandler<R, ()> for ChatGptSseHandler<R, T> {
         Ok(self.handler.result())
     }
 }
-pub trait ChatGpt {
-    fn chat<R, T: StreamChatHandler<R>>(
-        &mut self,
-        message: String,
-        handler: &ChatGptSseHandler<R, T>,
-    );
-}
 pub trait StreamChatHandler<T> {
     fn handle(&self, res: &ChatResponse) -> HandleResult;
     fn result(&self) -> T;
@@ -543,11 +536,11 @@ impl ChatGptClient {
         let sse_client = Self::client();
         Ok(Self { key, sse_client })
     }
-    pub fn chat<T: StreamChatHandler<String>>(
+    pub fn chat<R, T: StreamChatHandler<R>>(
         &mut self,
         request: ChatRequest,
-        handler: &ChatGptSseHandler<String, T>,
-    ) -> Result<String> {
+        handler: &ChatGptSseHandler<R, T>,
+    ) -> Result<R> {
         self.sse_client
             .post()
             .bearer_auth(self.key.key())
@@ -639,22 +632,6 @@ mod tests {
         assert_eq!(response.delta_content(), "Hello World");
     }
 
-    // #[test]
-    // fn gptのsseレスポンスを随時処理する() {
-    //     let mock_handler = MockHandler::new();
-    //     let gpt_handler = ChatGptHandler::new(mock_handler);
-
-    //     let mut fake = FakeChatGpt::new();
-    //     fake.set_chat_response("hello ");
-    //     fake.set_chat_response("i ");
-    //     fake.set_chat_response("am ");
-    //     fake.set_chat_response("gpt.");
-
-    //     let mut client = ChatGptClient::new(fake);
-
-    //     client.chat("hello", &gpt_handler);
-    //     assert_eq!(gpt_handler.handler_state().called_time(), 4);
-    // }
     #[test]
     fn test_clear() {
         let mut chat_history = ChatHistory::new();
@@ -699,24 +676,6 @@ pub mod fakes {
     use std::io::Write;
 
     use super::*;
-    pub struct FakeChatGpt {
-        responses: Vec<String>,
-        request_count: usize,
-    }
-    impl FakeChatGpt {
-        pub fn new() -> Self {
-            Self {
-                responses: Vec::new(),
-                request_count: 0,
-            }
-        }
-        pub fn set_chat_response(&mut self, response: impl Into<String>) {
-            self.responses.push(response.into());
-        }
-        pub fn request_count(&self) -> usize {
-            self.request_count
-        }
-    }
     pub struct MockHandler {
         called_time: RefCell<usize>,
         responses: RefCell<Vec<String>>,
