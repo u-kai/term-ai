@@ -158,6 +158,12 @@ impl ChatResponse {
             _ => todo!(),
         }
     }
+    pub fn is_done(&self) -> bool {
+        match self {
+            Self::Done => true,
+            _ => false,
+        }
+    }
     pub fn delta_content(&self) -> &str {
         match self {
             Self::DeltaContent(s) => s.as_str(),
