@@ -371,7 +371,7 @@ impl Display for OpenAIKey {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-struct ChatRequest {
+pub struct ChatRequest {
     model: OpenAIModel,
     messages: Vec<Message>,
     stream: bool,
@@ -545,13 +545,13 @@ impl ChatGptClient {
     }
     pub fn chat<T: StreamChatHandler<String>>(
         &mut self,
-        message: &str,
+        request: ChatRequest,
         handler: &ChatGptSseHandler<String, T>,
     ) -> Result<String> {
         self.sse_client
             .post()
             .bearer_auth(self.key.key())
-            .json(ChatRequest::user_gpt3(message));
+            .json(request);
         let result = self.sse_client.send(handler);
         Ok(result.unwrap())
     }
@@ -574,7 +574,7 @@ mod tests {
         let mut client = ChatGptClient::from_env().unwrap();
         let handler = ChatGptSseHandler::new(MockHandler::new());
 
-        let result = client.chat("日本語で絶対返事してね!", &handler);
+        let result = client.chat(ChatRequest::user_gpt3("日本語で絶対返事してね!"), &handler);
 
         assert!(result.as_ref().unwrap().len() > 0);
         assert!(handler.handler().called_time() > 0);
@@ -583,7 +583,7 @@ mod tests {
             assert!(!c.is_ascii());
         }
 
-        let result = client.chat("Hello World", &handler);
+        let result = client.chat(ChatRequest::user_gpt3("Hello World"), &handler);
 
         assert!(result.unwrap().len() > 0);
         assert!(handler.handler().called_time() > 0);
