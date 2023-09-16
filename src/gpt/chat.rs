@@ -16,6 +16,13 @@ impl ChatHistory {
     fn clear(&mut self) {
         self.inner.clear();
     }
+    fn last_request(&self) -> Option<&Message> {
+        if self.inner.len() < 2 {
+            self.inner.last()
+        } else {
+            self.inner.get(self.inner.len() - 2)
+        }
+    }
     fn last_response(&self) -> Option<&str> {
         self.inner.last().map(|m| m.content.as_str())
     }
@@ -49,6 +56,9 @@ impl ChatManager {
             return;
         }
         self.delta_store.push(res);
+    }
+    pub fn last_request(&self) -> Option<&Message> {
+        self.history.last_request()
     }
     pub fn last_response(&self) -> &str {
         self.history.last_response().unwrap_or("")
@@ -95,6 +105,9 @@ impl ChatGpt {
         );
         self.client.request_mut_fn(req, f);
     }
+    pub fn last_request(&self) -> Option<&Message> {
+        self.manager.last_request()
+    }
 }
 
 #[cfg(test)]
@@ -108,22 +121,20 @@ mod tests {
     fn gptとchatが可能() {
         let mut sut = ChatGpt::from_env().unwrap();
         let mut handler = MockMutHandler::new();
-        let mut v = Vec::new();
 
         sut.chat_gpt3("こんにちは", |res| {
             handler.handle(&res);
             match res {
-                ChatResponse::DeltaContent(s) => {
-                    v.push(s.clone());
-                    HandleResult::Progress
-                }
+                ChatResponse::DeltaContent(s) => HandleResult::Progress,
                 ChatResponse::Done => HandleResult::Done,
             }
         });
 
-        println!("{:#?}", v);
         assert!(handler.called_time() > 0);
-        assert!(v.len() > 0);
+        assert_eq!(
+            sut.last_request().unwrap(),
+            &Message::new(Role::User, "こんにちは")
+        );
     }
     #[test]
     fn chat_managerはsseレスポンスからhistoryを更新する() {
