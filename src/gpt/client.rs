@@ -103,6 +103,19 @@ impl GptClient {
         let sse_client = Self::client();
         Ok(Self { key, sse_client })
     }
+    pub fn request_mut<R, T: StreamChatMutHandler<R>>(
+        &mut self,
+        request: ChatRequest,
+        handler: &mut GptSseMutHandler<R, T>,
+    ) -> Result<R> {
+        self.sse_client
+            .post()
+            .bearer_auth(self.key.key())
+            .json(request);
+        self.sse_client
+            .send_mut(handler)
+            .map_err(|e| GptClientError::from(e))
+    }
     pub fn request<R, T: StreamChatHandler<R>>(
         &mut self,
         request: ChatRequest,

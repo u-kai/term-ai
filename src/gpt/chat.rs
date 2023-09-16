@@ -26,29 +26,27 @@ impl ChatHistory {
     }
 }
 
-pub struct ChatGptHandler {
+pub struct ChatManager {
     delta_store: DeltaContentStore,
     history: ChatHistory,
 }
-impl ChatGptHandler {
+impl ChatManager {
     pub fn new() -> Self {
         Self {
             history: ChatHistory::new(),
             delta_store: DeltaContentStore::new(),
         }
     }
-}
-impl StreamChatMutHandler<String> for ChatGptHandler {
-    fn handle(&mut self, res: &ChatResponse) -> HandleResult {
+    pub fn update_by_request(&mut self, message: impl Into<String>, role: Role) {
+        self.history.push_request(message, role);
+    }
+    pub fn update_by_response(&mut self, res: &ChatResponse) {
         if res.is_done() {
             self.history.push_response(self.delta_store.all_content());
-            return HandleResult::Done;
+            self.delta_store = DeltaContentStore::new();
+            return;
         }
         self.delta_store.push(res);
-        HandleResult::Progress
-    }
-    fn result(&self) -> String {
-        self.history.last_response().unwrap_or("").to_string()
     }
 }
 
@@ -72,13 +70,15 @@ impl DeltaContentStore {
 mod tests {
     use super::*;
     #[test]
-    fn chat_gpt_handlerはsseレスポンスからhistoryを更新する() {
-        let mut sut = ChatGptHandler::new();
-        sut.handle(&ChatResponse::DeltaContent("hello".to_string()));
-        sut.handle(&ChatResponse::DeltaContent(" world".to_string()));
-        sut.handle(&ChatResponse::Done);
+    fn chat_managerはsseレスポンスからhistoryを更新する() {
+        let mut sut = ChatManager::new();
+        sut.update_by_request("こんにちは", Role::User);
+        sut.update_by_response(&ChatResponse::DeltaContent("hello".to_string()));
+        sut.update_by_response(&ChatResponse::DeltaContent(" world".to_string()));
+        sut.update_by_response(&ChatResponse::Done);
 
         let mut expect = ChatHistory::new();
+        expect.push_request("こんにちは", Role::User);
         expect.push_response("hello world");
 
         assert_eq!(sut.history, expect);
