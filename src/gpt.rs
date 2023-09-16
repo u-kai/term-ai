@@ -5,7 +5,7 @@ use std::{
 
 use rsse::{
     client::{SseClient, SseClientBuilder},
-    sse::connector::SseTlsConnector,
+    sse::{connector::SseTlsConnector, response::SseResponse},
 };
 
 #[derive(Debug, Clone)]
@@ -265,7 +265,7 @@ impl ChatHistory {
     fn push_response(&mut self, message: ChatResponse) {
         self.inner.push(Message {
             role: Role::Assistant,
-            content: message.0,
+            content: message.delta_content().to_string(),
         });
     }
     fn push_request(&mut self, message: impl Into<String>, role: Role) {
@@ -283,23 +283,51 @@ impl ChatStream {
         Self(String::new())
     }
     fn gen_response(&self) -> ChatResponse {
-        ChatResponse(self.0.clone())
+        ChatResponse::DeltaContent(self.0.clone())
     }
     fn join_response(&mut self, message: &str) {
         self.0.push_str(message);
     }
 }
-#[derive(Debug, Clone)]
-pub struct ChatResponse(String);
+#[derive(Debug, Clone, PartialEq)]
+pub enum ChatResponse {
+    Done,
+    DeltaContent(String),
+}
 impl ChatResponse {
+    const GPT_DONE: &'static str = "[DONE]";
+    fn from_sse(sse_res: SseResponse) -> std::result::Result<Self, String> {
+        match sse_res {
+            SseResponse::Data(data) => {
+                if data.starts_with(Self::GPT_DONE) {
+                    return Ok(Self::Done);
+                };
+                match serde_json::from_str::<StreamChat>(&data) {
+                    Ok(chat) => Ok(Self::from(chat)),
+                    Err(e) => todo!(),
+                }
+            }
+            _ => todo!(),
+        }
+    }
     fn delta_content(&self) -> &str {
-        self.0.as_str()
+        match self {
+            Self::DeltaContent(s) => s.as_str(),
+            _ => "",
+        }
     }
 }
 impl From<StreamChat> for ChatResponse {
     fn from(s: StreamChat) -> Self {
-        s.last_response()
-            .map_or_else(|| Self(String::new()), |s| Self(s))
+        s.last_response().map_or_else(
+            || Self::DeltaContent(String::new()),
+            |s| Self::DeltaContent(s.to_string()),
+        )
+    }
+}
+impl<T: Into<String>> From<T> for ChatResponse {
+    fn from(s: T) -> Self {
+        Self::DeltaContent(s.into())
     }
 }
 #[derive(Clone)]
@@ -418,104 +446,85 @@ fn proxy_from_env() -> Option<String> {
 pub struct ChatGptClient<T: ChatGpt> {
     gpt: T,
 }
+
 impl<T: ChatGpt> ChatGptClient<T> {
     pub fn new(gpt: T) -> Self {
         Self { gpt }
     }
-    //pub fn chat(&mut self, message: impl Into<String>, handler: &impl StreamChatHandler) {
-    //    self.gpt.chat(message.into());
-    //}
+    pub fn chat<H: StreamChatHandler>(
+        &mut self,
+        message: impl Into<String>,
+        handler: &ChatGptHandler<H>,
+    ) {
+        self.gpt.chat(message.into(), handler);
+    }
 }
-pub trait ChatGpt {}
+pub struct ChatGptHandler<T: StreamChatHandler> {
+    handler: T,
+}
+pub trait ChatGpt {
+    fn chat<T: StreamChatHandler>(&mut self, message: String, handler: &ChatGptHandler<T>);
+}
 pub trait StreamChatHandler {
     fn handle(&self, res: &ChatResponse);
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use rsse::sse::response::SseResponse;
 
-    struct FakeChatGpt {
-        responses: Vec<String>,
-        request_count: usize,
-    }
-    impl FakeChatGpt {
-        fn new() -> Self {
-            Self {
-                responses: Vec::new(),
-                request_count: 0,
-            }
-        }
-        fn set_chat_response(&mut self, response: impl Into<String>) {
-            self.responses.push(response.into());
-        }
-        fn request_count(&self) -> usize {
-            self.request_count
-        }
-    }
-    impl ChatGpt for FakeChatGpt {}
-    struct MockHandler {
-        called_time: RefCell<usize>,
-    }
-    impl MockHandler {
-        fn new() -> Self {
-            Self {
-                called_time: RefCell::new(0),
-            }
-        }
-        fn called_time(&self) -> usize {
-            *self.called_time.borrow()
-        }
-        fn inc_called_time(&self) {
-            *self.called_time.borrow_mut() += 1;
-        }
-    }
+    use crate::gpt::fakes::{make_stream_chat, make_stream_chat_json};
+
+    use super::*;
 
     #[test]
     #[allow(non_snake_case)]
+    fn chat_gptのsseレスポンスをChatResponseに変換可能() {
+        let response = SseResponse::Data(make_stream_chat_json("Hello World"));
+        assert_eq!(
+            ChatResponse::from_sse(response).unwrap().delta_content(),
+            "Hello World"
+        );
+    }
+    #[test]
+    #[allow(non_snake_case)]
+    fn chat_gptのsseレスポンスをChatResponseに変換可能_done() {
+        let response = SseResponse::Data("[DONE]".to_string());
+        assert_eq!(
+            ChatResponse::from_sse(response).unwrap(),
+            ChatResponse::Done
+        );
+    }
+    #[test]
+    #[allow(non_snake_case)]
     fn chat_gptのレスポンスはChatResponseに変換可能() {
-        let response = r#"
-            {
-              "id": "chatcmpl-xxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-              "object": "chat.completion.chunk",
-              "created": 1694832938,
-              "model": "gpt-3.5-turbo-0613",
-              "choices": [
-                { "index": 0, "delta": { "content": "Hello World" }, "finish_reason": null }
-              ]
-            }"#;
-        let response: StreamChat = serde_json::from_str(response).unwrap();
-        let response = ChatResponse::from(response);
+        let response = ChatResponse::from(make_stream_chat("Hello World"));
         assert_eq!(response.delta_content(), "Hello World");
     }
 
-    impl StreamChatHandler for MockHandler {
-        fn handle(&self, res: &ChatResponse) {
-            self.inc_called_time();
-        }
-    }
-    //#[test]
-    //fn gptのsseレスポンスを随時処理する() {
-    //    let mock_handler = MockHandler::new();
+    // #[test]
+    // fn gptのsseレスポンスを随時処理する() {
+    //     let mock_handler = MockHandler::new();
+    //     let gpt_handler = ChatGptHandler::new(mock_handler);
 
-    //    let mut fake = FakeChatGpt::new();
-    //    fake.set_chat_response("hello ");
-    //    fake.set_chat_response("i ");
-    //    fake.set_chat_response("am ");
-    //    fake.set_chat_response("gpt.");
+    //     let mut fake = FakeChatGpt::new();
+    //     fake.set_chat_response("hello ");
+    //     fake.set_chat_response("i ");
+    //     fake.set_chat_response("am ");
+    //     fake.set_chat_response("gpt.");
 
-    //    let mut client = ChatGptClient::new(fake);
+    //     let mut client = ChatGptClient::new(fake);
 
-    //    client.chat("hello", &mock_handler);
-    //    assert_eq!(mock_handler.called_time(), 4);
-    //}
+    //     client.chat("hello", &gpt_handler);
+    //     assert_eq!(gpt_handler.handler_state().called_time(), 4);
+    // }
     #[test]
     fn test_clear() {
         let mut chat_history = ChatHistory::new();
         chat_history.push_request("hello", Role::User);
-        chat_history.push_response(ChatResponse("hello,i am gpt".to_string()));
+        chat_history.push_response(ChatResponse::from("hello,i am gpt"));
         chat_history.push_request("thanks", Role::User);
-        chat_history.push_response(ChatResponse("thanks too.".to_string()));
+        chat_history.push_response(ChatResponse::from("thanks too."));
         assert_eq!(
             chat_history.all(),
             vec![
@@ -543,7 +552,78 @@ mod tests {
     #[test]
     fn test_last_response() {
         let mut chat_history = ChatHistory::new();
-        chat_history.push_response(ChatResponse("test".to_string()));
+        chat_history.push_response(ChatResponse::from("test"));
         assert_eq!(chat_history.last_response(), Some("test"));
+    }
+}
+
+#[cfg(test)]
+pub mod fakes {
+    use super::*;
+    pub struct FakeChatGpt {
+        responses: Vec<String>,
+        request_count: usize,
+    }
+    impl FakeChatGpt {
+        pub fn new() -> Self {
+            Self {
+                responses: Vec::new(),
+                request_count: 0,
+            }
+        }
+        pub fn set_chat_response(&mut self, response: impl Into<String>) {
+            self.responses.push(response.into());
+        }
+        pub fn request_count(&self) -> usize {
+            self.request_count
+        }
+    }
+    impl ChatGpt for FakeChatGpt {
+        fn chat<T: StreamChatHandler>(&mut self, message: String, handler: &ChatGptHandler<T>) {
+            let response = self.responses.remove(0);
+            let response = ChatResponse::from(make_stream_chat(&response));
+            handler.handler.handle(&response);
+            self.request_count += 1;
+        }
+    }
+    struct MockHandler {
+        called_time: RefCell<usize>,
+    }
+    impl MockHandler {
+        fn new() -> Self {
+            Self {
+                called_time: RefCell::new(0),
+            }
+        }
+        fn called_time(&self) -> usize {
+            *self.called_time.borrow()
+        }
+        fn inc_called_time(&self) {
+            *self.called_time.borrow_mut() += 1;
+        }
+    }
+
+    impl StreamChatHandler for MockHandler {
+        fn handle(&self, res: &ChatResponse) {
+            self.inc_called_time();
+        }
+    }
+    pub fn make_stream_chat_json(message: &str) -> String {
+        format!(
+            r#"
+            {{
+              "id": "chatcmpl-xxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+              "object": "chat.completion.chunk",
+              "created": 1694832938,
+              "model": "gpt-3.5-turbo-0613",
+              "choices": [
+                {{ "index": 0, "delta": {{ "content": "{}" }}, "finish_reason": null }}
+              ]
+            }}"#,
+            message
+        )
+    }
+    pub fn make_stream_chat(message: &str) -> StreamChat {
+        serde_json::from_str(&make_stream_chat_json(message)).unwrap()
     }
 }
