@@ -4,26 +4,33 @@ use super::{common::is_file_path, GptFunction};
 use std::{fs::File, io::Read};
 //
 #[derive(Debug, Clone)]
-pub struct CodeReviewer {}
+pub struct CodeReviewer {
+    prefix: &'static str,
+}
 
 impl CodeReviewer {
     const PREFIX: &'static str = "以下のコードをレビューしてください";
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(prefix: &'static str) -> Self {
+        Self { prefix }
+    }
+}
+
+impl Default for CodeReviewer {
+    fn default() -> Self {
+        Self::new(Self::PREFIX)
     }
 }
 impl GptFunction for CodeReviewer {
-    fn switch_do_action(&mut self, request: &Message) {}
     fn change_request(&self, request: &mut Message) {
         if is_file_path(&request.content) {
-            let mut file = File::open(&request.content).unwrap();
+            let path = request.content.trim();
+            let mut file = File::open(path).unwrap();
             let mut content = String::new();
             file.read_to_string(&mut content).unwrap();
             let message_content = request.change_content();
-            *message_content = format!("{}\n{}", Self::PREFIX, content);
+            *message_content = format!("{}\n{}", self.prefix, content);
         }
     }
-    fn action_at_end(&mut self) {}
 }
 
 #[cfg(test)]
@@ -43,16 +50,14 @@ mod tests {
         let file_content = "fn main() { println!(\"Hello, world!\"); }";
         file.write_all(file_content.as_bytes()).unwrap();
 
-        let mut code_reviewer = CodeReviewer::new();
+        let prefix = "以下のコードをレビューしてください";
+        let mut code_reviewer = CodeReviewer::new(prefix);
         let mut message = Message::new(Role::User, "tmp/test.rs");
         code_reviewer.change_request(&mut message);
 
         assert_eq!(
             message,
-            Message::new(
-                Role::User,
-                format!("{}\n{}", CodeReviewer::PREFIX, file_content)
-            )
+            Message::new(Role::User, format!("{}\n{}", prefix, file_content))
         );
     }
 }

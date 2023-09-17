@@ -2,10 +2,10 @@ use std::io::Write;
 
 use crate::gpt::{
     chat::ChatGpt,
-    client::{ChatResponse, GptClientError, HandleResult, Message, OpenAIModel, Role},
+    client::{GptClientError, HandleResult, Message, OpenAIModel, Role},
 };
 
-use super::GptFunction;
+use super::{GptDefaultFunction, GptFunction};
 
 pub struct ChatGptRepl {
     chat_gpt: ChatGpt,
@@ -19,7 +19,7 @@ impl ChatGptRepl {
             chat_gpt: ChatGpt::from_env().unwrap(),
             display_gpt: std::env::var("DISPLAY_GPT").unwrap_or("gpt".to_string()),
             display_user: std::env::var("USER").unwrap_or("you".to_string()),
-            functions: vec![],
+            functions: vec![Box::new(GptDefaultFunction::new())],
         }
     }
     pub fn add_functions(&mut self, f: Box<dyn GptFunction>) {
@@ -58,15 +58,9 @@ impl ChatGptRepl {
             self.gpt_first();
             self.chat_gpt.chat(model, message, &mut |res| {
                 Self::gpt_message(&res.delta_content());
-                let progress = self
-                    .functions
+                self.functions
                     .iter_mut()
-                    .fold(HandleResult::Progress, |acc, f| f.handle_stream(&res));
-                match (progress, res) {
-                    (HandleResult::Done, ChatResponse::DeltaContent(_)) => HandleResult::Done,
-                    (_, ChatResponse::Done) => HandleResult::Done,
-                    _ => HandleResult::Progress,
-                }
+                    .fold(HandleResult::Progress, |acc, f| f.handle_stream(&res))
             })?;
 
             self.functions.iter_mut().for_each(|f| {
