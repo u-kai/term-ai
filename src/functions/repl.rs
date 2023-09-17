@@ -5,10 +5,13 @@ use crate::gpt::{
     client::{ChatResponse, GptClientError, HandleResult, Message, OpenAIModel, Role},
 };
 
+use super::GptFunction;
+
 pub struct ChatGptRepl {
     chat_gpt: ChatGpt,
     display_gpt: String,
     display_user: String,
+    functions: Vec<Box<dyn GptFunction>>,
 }
 impl ChatGptRepl {
     pub fn new() -> Self {
@@ -16,25 +19,21 @@ impl ChatGptRepl {
             chat_gpt: ChatGpt::from_env().unwrap(),
             display_gpt: std::env::var("DISPLAY_GPT").unwrap_or("gpt".to_string()),
             display_user: std::env::var("USER").unwrap_or("you".to_string()),
+            functions: vec![],
         }
     }
-    pub fn repl_gpt4<F: FnMut(&ChatResponse) -> HandleResult>(
-        &mut self,
-        f: &mut F,
-    ) -> Result<(), GptClientError> {
-        self.repl(OpenAIModel::Gpt4, f)
+    pub fn add_functions(&mut self, f: Box<dyn GptFunction>) {
+        self.functions.push(f);
     }
-    pub fn repl_gpt3<F: FnMut(&ChatResponse) -> HandleResult>(
-        &mut self,
-        f: &mut F,
-    ) -> Result<(), GptClientError> {
-        self.repl(OpenAIModel::Gpt3Dot5Turbo, f)
+    //pub fn repl_gpt4<F: FnMut(&ChatResponse) -> HandleResult>(
+    pub fn repl_gpt4(&mut self) -> Result<(), GptClientError> {
+        self.repl(OpenAIModel::Gpt4)
     }
-    pub fn repl<F: FnMut(&ChatResponse) -> HandleResult>(
-        &mut self,
-        model: OpenAIModel,
-        f: &mut F,
-    ) -> Result<(), GptClientError> {
+    pub fn repl_gpt3(&mut self) -> Result<(), GptClientError> {
+        self.repl(OpenAIModel::Gpt3Dot5Turbo)
+    }
+    //pub fn repl<F: FnMut(&ChatResponse) -> HandleResult>(
+    pub fn repl(&mut self, model: OpenAIModel) -> Result<(), GptClientError> {
         loop {
             self.user_first();
             let message = Self::user_input();
@@ -46,12 +45,33 @@ impl ChatGptRepl {
                 println!("clear chat history");
                 continue;
             }
-            let message = Message::new(Role::User, &message);
+            let mut message = Message::new(Role::User, &message);
+
+            self.functions
+                .iter_mut()
+                .for_each(|f| f.switch_do_action(&message));
+
+            self.functions.iter().for_each(|f| {
+                f.change_request(&mut message);
+            });
+
             self.gpt_first();
             self.chat_gpt.chat(model, message, &mut |res| {
                 Self::gpt_message(&res.delta_content());
-                f(res)
+                let progress = self
+                    .functions
+                    .iter_mut()
+                    .fold(HandleResult::Progress, |acc, f| f.handle_stream(&res));
+                match (progress, res) {
+                    (HandleResult::Done, ChatResponse::DeltaContent(_)) => HandleResult::Done,
+                    (_, ChatResponse::Done) => HandleResult::Done,
+                    _ => HandleResult::Progress,
+                }
             })?;
+
+            self.functions.iter_mut().for_each(|f| {
+                f.action_at_end();
+            });
             // If above line process is heavy,I would like to proceed first below
             // It may be necessary to have an input that can receive the results of parallel processing.
             Self::gpt_finish();

@@ -299,6 +299,12 @@ impl Message {
             content: content.into(),
         }
     }
+    pub fn change_content(&mut self) -> &mut String {
+        &mut self.content
+    }
+    pub fn change_role(&mut self, role: Role) {
+        self.role = role;
+    }
 }
 
 #[derive(Debug, Clone, Copy, serde::Deserialize, PartialEq, Eq)]

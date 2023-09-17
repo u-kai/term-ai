@@ -1,12 +1,15 @@
-use crate::gpt::client::ChatResponse;
+use crate::gpt::client::{ChatResponse, HandleResult, Message};
 
 pub mod repl;
 
 pub trait GptFunction {
-    fn change_request(&self, request_message: &mut String);
-    fn handle_stream(&mut self, response: &ChatResponse);
+    fn switch_do_action(&mut self, request: &Message);
+    fn change_request(&self, request: &mut Message);
+    fn handle_stream(&mut self, response: &ChatResponse) -> HandleResult {
+        match response {
+            ChatResponse::DeltaContent(_content) => HandleResult::Progress,
+            ChatResponse::Done => HandleResult::Done,
+        }
+    }
     fn action_at_end(&mut self);
 }
-
-#[cfg(test)]
-mod tests {}

@@ -7,13 +7,6 @@ fn main() {
     println!("Welcome to GPT4 REPL");
     let mut repl = ChatGptRepl::new();
     let mut s = String::new();
-    repl.repl_gpt4(&mut |res| match res {
-        ChatResponse::DeltaContent(content) => {
-            s.push_str(&content);
-            HandleResult::Progress
-        }
-        ChatResponse::Done => HandleResult::Done,
-    })
-    .unwrap();
+    repl.repl_gpt4().unwrap();
     println!("{:#?}", s);
 }
