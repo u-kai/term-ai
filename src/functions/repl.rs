@@ -2,7 +2,7 @@ use std::io::Write;
 
 use crate::gpt::{
     chat::ChatGpt,
-    client::{ChatResponse, GptClientError, HandleResult, OpenAIModel},
+    client::{ChatResponse, GptClientError, HandleResult, Message, OpenAIModel, Role},
 };
 
 pub struct ChatGptRepl {
@@ -46,8 +46,9 @@ impl ChatGptRepl {
                 println!("clear chat history");
                 continue;
             }
+            let message = Message::new(Role::User, &message);
             self.gpt_first();
-            self.chat_gpt.chat(message, model, &mut |res| {
+            self.chat_gpt.chat(model, message, &mut |res| {
                 Self::gpt_message(&res.delta_content());
                 f(res)
             })?;
