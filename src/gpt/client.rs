@@ -290,7 +290,7 @@ impl ChatRequest {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct Message {
     role: Role,
-    pub(super) content: String,
+    pub(crate) content: String,
 }
 impl Message {
     pub fn new(role: Role, content: impl Into<String>) -> Self {
