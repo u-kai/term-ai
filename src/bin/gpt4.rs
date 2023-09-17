@@ -7,7 +7,7 @@ fn main() {
     println!("Welcome to GPT4 REPL");
     let mut repl = ChatGptRepl::new();
     let mut s = String::new();
-    repl.repl(OpenAIModel::Gpt4, &mut |res| match res {
+    repl.repl_gpt4(&mut |res| match res {
         ChatResponse::DeltaContent(content) => {
             s.push_str(&content);
             HandleResult::Progress

@@ -25,7 +25,11 @@ impl ChatHistory {
         }
     }
     fn last_response(&self) -> Option<&str> {
-        self.inner.last().map(|m| m.content.as_str())
+        if self.inner.len() < 2 {
+            None
+        } else {
+            self.inner.last().map(|m| m.content.as_str())
+        }
     }
     fn push_response(&mut self, message: impl Into<String>) {
         self.inner
@@ -246,6 +250,7 @@ mod tests {
     #[test]
     fn historyの最後のデータを取得可能() {
         let mut chat_history = ChatHistory::new();
+        chat_history.push_request("hello", Role::User);
         chat_history.push_response("test");
         assert_eq!(chat_history.last_response(), Some("test"));
     }
