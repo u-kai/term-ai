@@ -25,14 +25,12 @@ impl ChatGptRepl {
     pub fn add_functions(&mut self, f: Box<dyn GptFunction>) {
         self.functions.push(f);
     }
-    //pub fn repl_gpt4<F: FnMut(&ChatResponse) -> HandleResult>(
     pub fn repl_gpt4(&mut self) -> Result<(), GptClientError> {
         self.repl(OpenAIModel::Gpt4)
     }
     pub fn repl_gpt3(&mut self) -> Result<(), GptClientError> {
         self.repl(OpenAIModel::Gpt3Dot5Turbo)
     }
-    //pub fn repl<F: FnMut(&ChatResponse) -> HandleResult>(
     pub fn repl(&mut self, model: OpenAIModel) -> Result<(), GptClientError> {
         loop {
             self.user_first();

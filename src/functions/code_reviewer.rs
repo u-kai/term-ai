@@ -35,26 +35,27 @@ impl GptFunction for CodeReviewer {
 
 #[cfg(test)]
 mod tests {
-    use std::io::Write;
 
-    use crate::gpt::client::{Message, Role};
+    use crate::{
+        functions::common::test_tool::TestFileFactory,
+        gpt::client::{Message, Role},
+    };
 
     use super::*;
     #[test]
     #[ignore]
     fn messageの入力がfile_pathであればcode_reviewerはmessageの内容をコードレビュー依頼に変換する()
     {
-        std::fs::remove_dir_all("tmp").unwrap_or_default();
-        std::fs::create_dir("tmp").unwrap();
-        let mut file = std::fs::File::create("tmp/test.rs").unwrap();
+        let test_file = TestFileFactory::create("tmp");
         let file_content = "fn main() { println!(\"Hello, world!\"); }";
-        file.write_all(file_content.as_bytes()).unwrap();
+        test_file.create_file_under_root("test.rs", file_content);
 
         let prefix = "以下のコードをレビューしてください";
         let mut code_reviewer = CodeReviewer::new(prefix);
         let mut message = Message::new(Role::User, "tmp/test.rs");
         code_reviewer.change_request(&mut message);
 
+        test_file.remove_dir_all();
         assert_eq!(
             message,
             Message::new(Role::User, format!("{}\n{}", prefix, file_content))

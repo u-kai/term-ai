@@ -1,5 +1,6 @@
 use crate::gpt::client::{ChatResponse, HandleResult, Message};
 
+pub mod code_capture;
 pub mod code_reviewer;
 mod common;
 pub mod repl;
