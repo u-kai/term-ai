@@ -2,20 +2,12 @@ use std::io::Write;
 
 use super::GptFunction;
 
-//use std::{cell::RefCell, io::Write};
-//
-//use rand::Rng;
-//
-//use crate::{
-//    gpt::{GptClient, GptClientError, OpenAIModel, Role},
-//    repl::GptMessageHandler,
-//};
-//
+use rand::Rng;
 pub struct SampleFileWriter<R: RandGenerator> {
     root_dir: String,
     rand: R,
 }
-//
+
 impl<R: RandGenerator> SampleFileWriter<R> {
     const PREFIX: &'static str = "sample_for_gpt_";
     pub fn new(root_dir: &str, rand: R) -> Self {
@@ -54,50 +46,6 @@ impl<R: RandGenerator> CodeWriter for SampleFileWriter<R> {
 pub trait CodeWriter {
     fn write_all(&mut self, code: Vec<Code>) -> Result<(), std::io::Error>;
 }
-//
-//#[derive(Debug, Clone)]
-//pub struct CodeCaptureGpt<W: CodeWriter> {
-//    gpt: GptClient,
-//    code_capture: RefCell<CodeCapture>,
-//    w: W,
-//}
-//
-//impl<W: CodeWriter> GptMessageHandler<GptClientError> for CodeCaptureGpt<W> {
-//    fn clear_history(&mut self) {
-//        self.gpt.clear_history();
-//    }
-//    fn handle<F>(&mut self, message: &str, f: &F) -> Result<(), GptClientError>
-//    where
-//        F: Fn(&str) -> (),
-//    {
-//        let result = self
-//            .gpt
-//            .chat(OpenAIModel::Gpt3Dot5Turbo, Role::User, message, &|event| {
-//                f(event);
-//            })?;
-//        self.code_capture.borrow_mut().add(&result);
-//        let codes = self.code_capture.borrow().get_codes();
-//        codes.into_iter().for_each(|code| {
-//            self.w.write_all(code).unwrap();
-//        });
-//        Ok(())
-//    }
-//}
-//
-//impl<W: CodeWriter> CodeCaptureGpt<W> {
-//    pub fn from_env(w: W) -> Result<Self, GptClientError> {
-//        let mut gpt = GptClient::from_env()?;
-//        gpt.chat(OpenAIModel::Gpt3Dot5Turbo, Role::System, "私がお願いするプログラミングの記述に対するレスポンスは全て```プログラミング言語名で初めて表現してください", &|_| {})?;
-//        // set first command for system
-//        Ok(Self {
-//            gpt,
-//            code_capture: RefCell::new(CodeCapture::new()),
-//            w,
-//        })
-//    }
-//}
-//
-//
 #[derive(Debug, Clone)]
 pub struct GptCodeCapture<W: CodeWriter> {
     writer: W,
@@ -115,6 +63,11 @@ impl<W: CodeWriter> GptCodeCapture<W> {
     }
 }
 
+impl GptCodeCapture<SampleFileWriter<DefaultRandGenerator>> {
+    pub fn new_with_file_writer(root_dir: &str) -> Self {
+        Self::new(SampleFileWriter::new(root_dir, DefaultRandGenerator::new()))
+    }
+}
 impl<W: CodeWriter> GptFunction for GptCodeCapture<W> {
     fn handle_stream(
         &mut self,
@@ -206,6 +159,7 @@ pub enum Lang {
     TypeScript,
     Ruby,
     Bash,
+    Haskell,
     Yaml,
     Json,
     Unknown,
@@ -217,6 +171,7 @@ impl Lang {
             Self::Python => "py",
             Self::Go => "go",
             Self::Java => "java",
+            Self::Haskell => "hs",
             Self::JavaScript => "js",
             Self::TypeScript => "ts",
             Self::Ruby => "rb",
@@ -233,6 +188,7 @@ impl Lang {
             Self::Python => "python",
             Self::Go => "go",
             Self::Java => "java",
+            Self::Haskell => "haskell",
             Self::JavaScript => "javascript",
             Self::TypeScript => "typescript",
             Self::Ruby => "ruby",
@@ -247,6 +203,7 @@ impl Lang {
             "rust" => Self::Rust,
             "python" => Self::Python,
             "go" => Self::Go,
+            "haskell" => Self::Haskell,
             "java" => Self::Java,
             "javascript" => Self::JavaScript,
             "typescript" => Self::TypeScript,
@@ -261,6 +218,21 @@ impl Lang {
 
 pub trait RandGenerator {
     fn gen(&mut self) -> usize;
+}
+pub struct DefaultRandGenerator {
+    rand: rand::rngs::ThreadRng,
+}
+impl DefaultRandGenerator {
+    pub fn new() -> Self {
+        Self {
+            rand: rand::thread_rng(),
+        }
+    }
+}
+impl RandGenerator for DefaultRandGenerator {
+    fn gen(&mut self) -> usize {
+        self.rand.gen()
+    }
 }
 
 #[cfg(test)]
