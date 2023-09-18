@@ -4,6 +4,8 @@ pub mod code_capture;
 pub mod code_reviewer;
 mod common;
 pub mod repl;
+#[cfg(target_os = "macos")]
+pub mod speaker;
 pub mod translator;
 
 pub struct GptFunctionContainer {
