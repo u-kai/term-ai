@@ -1,3 +1,5 @@
+use std::io::Write;
+
 use super::GptFunction;
 
 //use std::{cell::RefCell, io::Write};
@@ -9,38 +11,46 @@ use super::GptFunction;
 //    repl::GptMessageHandler,
 //};
 //
-//pub struct SampleFileMaker {
-//    rand: rand::rngs::ThreadRng,
-//}
+pub struct SampleFileWriter<R: RandGenerator> {
+    root_dir: String,
+    rand: R,
+}
 //
-//impl SampleFileMaker {
-//    const PREFIX: &'static str = "sample_for_gpt_";
-//    pub fn new() -> Self {
-//        Self {
-//            rand: rand::thread_rng(),
-//        }
-//    }
-//    fn make_filename(&mut self) -> String {
-//        let mut file_name = String::from(Self::PREFIX);
-//        for _ in 0..6 {
-//            file_name.push((self.rand.gen_range(0..26) + 97) as u8 as char);
-//        }
-//        file_name
-//    }
-//}
-//
-//impl CodeWriter for SampleFileMaker {
-//    fn write_all(&mut self, code: Code) -> Result<(), std::io::Error> {
-//        let filename = match code.extends_str() {
-//            Some(ex) => format!("{}.{}", self.make_filename(), ex),
-//            None => self.make_filename(),
-//        };
-//        let mut file = std::fs::File::create(filename)?;
-//        file.write_all(code.as_bytes())?;
-//        Ok(())
-//    }
-//}
-//
+impl<R: RandGenerator> SampleFileWriter<R> {
+    const PREFIX: &'static str = "sample_for_gpt_";
+    pub fn new(root_dir: &str, rand: R) -> Self {
+        Self {
+            root_dir: root_dir.to_string(),
+            rand,
+        }
+    }
+    fn make_filepath(&mut self, code: &Code) -> String {
+        format!(
+            "{}/{}{}.{}",
+            self.root_dir,
+            Self::PREFIX,
+            self.rand.gen(),
+            code.extends_str().unwrap_or("txt")
+        )
+    }
+}
+
+impl<R: RandGenerator> CodeWriter for SampleFileWriter<R> {
+    fn write_all(&mut self, codes: Vec<Code>) -> Result<(), std::io::Error> {
+        codes
+            .iter()
+            .map(|code| {
+                let filepath = self.make_filepath(code);
+                let mut file = std::fs::File::create(filepath)?;
+                file.write_all(code.as_bytes())
+            })
+            .fold(Ok(()), |acc, result| match acc {
+                Ok(_) => result,
+                Err(e) => Err(e),
+            })
+    }
+}
+
 pub trait CodeWriter {
     fn write_all(&mut self, code: Vec<Code>) -> Result<(), std::io::Error>;
 }
@@ -249,9 +259,16 @@ impl Lang {
     }
 }
 
+pub trait RandGenerator {
+    fn gen(&mut self) -> usize;
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::gpt::client::{ChatResponse, HandleResult};
+    use crate::{
+        functions::common::test_tool::TestFileFactory,
+        gpt::client::{ChatResponse, HandleResult},
+    };
 
     impl CodeWriter for &mut String {
         fn write_all(&mut self, codes: Vec<Code>) -> Result<(), std::io::Error> {
@@ -262,6 +279,42 @@ mod tests {
         }
     }
     use super::*;
+    #[test]
+    #[ignore]
+    fn sample_file_writerはランダムな名前で指定ディレクトリにファイルを作成する() {
+        struct FakeRand {
+            rand: usize,
+        }
+        impl RandGenerator for FakeRand {
+            fn gen(&mut self) -> usize {
+                self.rand
+            }
+        }
+        let root_dir = "tmp";
+        let rand = 0;
+        let mut test_file = TestFileFactory::create(root_dir);
+        let mut file_writer = SampleFileWriter::new(root_dir, FakeRand { rand });
+
+        let mut function = GptCodeCapture::new(file_writer);
+        let code = "fn main(){println!();}";
+        function.handle_stream(&ChatResponse::DeltaContent("```rust\n".to_string()));
+        function.handle_stream(&ChatResponse::DeltaContent(code.to_string()));
+        function.handle_stream(&ChatResponse::DeltaContent("```".to_string()));
+        function.handle_stream(&ChatResponse::Done);
+
+        function.action_at_end();
+
+        let result = std::fs::read_to_string(format!(
+            "{}/{}{}.rs",
+            root_dir,
+            SampleFileWriter::<FakeRand>::PREFIX,
+            rand
+        ))
+        .unwrap();
+
+        test_file.remove_dir_all();
+        assert_eq!(result, code);
+    }
     #[test]
     fn gptのレスポンス終了時にcodeが存在していればwriterを利用して書き込みを行う() {
         let mut buf = String::new();
