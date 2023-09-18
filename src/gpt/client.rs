@@ -87,7 +87,7 @@ pub trait StreamChatMutHandler<T> {
     fn result(&self) -> T;
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum HandleResult {
     Progress,
     Done,
@@ -379,7 +379,7 @@ impl Into<&'static str> for OpenAIModel {
         self.into_str()
     }
 }
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct GptClientError {
     message: String,
     kind: GptClientErrorKind,
@@ -414,7 +414,7 @@ impl Display for GptClientError {
         write!(f, "kind : {}\n message : {}", self.kind, self.message)
     }
 }
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum GptClientErrorKind {
     InvalidUrl(String),
     ParseError(String),
