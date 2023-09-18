@@ -81,8 +81,10 @@ impl<W: CodeWriter> GptFunction for GptCodeCapture<W> {
             crate::gpt::client::ChatResponse::Done => crate::gpt::client::HandleResult::Done,
         }
     }
-    fn action_at_end(&mut self) {
-        self.writer.write_all(self.inner.get_codes()).unwrap();
+    fn action_at_end(&mut self) -> Result<(), Box<dyn std::error::Error + 'static>> {
+        self.writer
+            .write_all(self.inner.get_codes())
+            .map_err(|e| e.into())
     }
 }
 #[derive(Debug, Clone)]

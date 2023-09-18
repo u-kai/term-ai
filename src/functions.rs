@@ -23,5 +23,7 @@ pub trait GptFunction {
             ChatResponse::Done => HandleResult::Done,
         }
     }
-    fn action_at_end(&mut self) {}
+    fn action_at_end(&mut self) -> Result<(), Box<dyn std::error::Error + 'static>> {
+        Ok(())
+    }
 }
