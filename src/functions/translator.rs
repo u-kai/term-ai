@@ -7,6 +7,7 @@ use super::{
     GptFunction,
 };
 
+#[derive(Debug, PartialEq)]
 pub struct FileTranslator {
     source_path: String,
     do_action: bool,
@@ -44,8 +45,10 @@ impl GptFunction for FileTranslator {
         }
     }
     fn action_at_end(&mut self) -> Result<(), Box<dyn std::error::Error + 'static>> {
-        self.append_result()?;
-        *self = Self::new();
+        if self.do_action() {
+            self.append_result()?;
+            *self = Self::new();
+        }
         Ok(())
     }
     fn handle_stream(
@@ -75,7 +78,7 @@ impl GptFunction for FileTranslator {
 mod tests {
     use crate::{
         functions::{common::test_tool::TestFileFactory, GptFunction},
-        gpt::client::{ChatResponse, Message, Role},
+        gpt::client::{ChatResponse, HandleResult, Message, Role},
     };
 
     use super::FileTranslator;
@@ -99,7 +102,7 @@ mod tests {
     }
     #[test]
     #[ignore]
-    fn gptのレスポンスが終了したら内部の結果をfileに追記しactionをoffにする() {
+    fn gptのレスポンスが終了したら内部の結果をfileに追記し自身を初期化する() {
         let mut sut = FileTranslator::new();
         let test_file = TestFileFactory::create("tmp");
         test_file.create_file_under_root("hello.txt", "hello");
@@ -119,6 +122,29 @@ mod tests {
         test_file.remove_dir_all();
         assert_eq!(content, "hello\nこんにちは");
         assert_eq!(sut.do_action(), false);
+    }
+    #[test]
+    fn actionがoffであれば何もしない() {
+        let mut message = Message::new(Role::User, "none");
+
+        let mut sut = FileTranslator::new();
+        sut.switch_do_action(&message);
+        assert_eq!(sut.do_action(), false);
+
+        sut.change_request(&mut message);
+        assert_eq!(message.content, "none");
+
+        let progress = sut.handle_stream(&ChatResponse::DeltaContent("こん".to_string()));
+        assert_eq!(progress, HandleResult::Progress);
+
+        let progress = sut.handle_stream(&ChatResponse::DeltaContent("にちは".to_string()));
+        assert_eq!(progress, HandleResult::Progress);
+
+        let progress = sut.handle_stream(&ChatResponse::Done);
+        assert_eq!(progress, HandleResult::Done);
+
+        assert_eq!(sut, FileTranslator::new());
+        sut.action_at_end().unwrap();
     }
     #[test]
     fn gptからの結果を内部に格納する() {

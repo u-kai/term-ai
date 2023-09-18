@@ -106,3 +106,4 @@ gpt> hello. I'm GPT. 今日はいい天気なんですか？AIだからわから
 --ai-display, -a
 --help, -h
 ```
+
