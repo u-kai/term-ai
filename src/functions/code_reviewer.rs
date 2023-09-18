@@ -1,8 +1,6 @@
 use crate::gpt::client::Message;
 
-use super::{common::is_file_path, GptFunction};
-use std::{fs::File, io::Read};
-//
+use super::{common::change_request_to_file_content, GptFunction};
 #[derive(Debug, Clone)]
 pub struct CodeReviewer {
     prefix: &'static str,
@@ -22,14 +20,9 @@ impl Default for CodeReviewer {
 }
 impl GptFunction for CodeReviewer {
     fn change_request(&self, request: &mut Message) {
-        if is_file_path(&request.content) {
-            let path = request.content.trim();
-            let mut file = File::open(path).unwrap();
-            let mut content = String::new();
-            file.read_to_string(&mut content).unwrap();
-            let message_content = request.change_content();
-            *message_content = format!("{}\n{}", self.prefix, content);
-        }
+        if let Err(err) = change_request_to_file_content(self.prefix, request) {
+            eprintln!("{}", err);
+        };
     }
 }
 
@@ -62,46 +55,3 @@ mod tests {
         );
     }
 }
-
-//
-//impl GptMessageHandler<GptClientError> for CodeReviewer {
-//    fn clear_history(&mut self) {
-//        self.gpt.clear_history();
-//    }
-//    fn handle<F>(&mut self, message: &str, f: &F) -> Result<(), GptClientError>
-//    where
-//        F: Fn(&str) -> (),
-//    {
-//        let mut message = message.trim().to_string();
-//        if is_file_path(&message) {
-//            Self::path_to_code_review_request(&mut message);
-//        }
-//        self.review(OpenAIModel::Gpt3Dot5Turbo, &message, f)?;
-//        Ok(())
-//    }
-//}
-//
-//impl CodeReviewer {
-//    const PREFIX: &'static str = "以下のコードをレビューしてください";
-//    pub fn from_env() -> Result<Self, GptClientError> {
-//        let gpt = GptClient::from_env()?;
-//        Ok(Self { gpt })
-//    }
-//    pub fn review<F: Fn(&str)>(
-//        &mut self,
-//        model: OpenAIModel,
-//        code: &str,
-//        f: &F,
-//    ) -> Result<String, GptClientError> {
-//        let response = self.gpt.chat(model, Role::User, code, f)?;
-//        Ok(response)
-//    }
-//    fn path_to_code_review_request(path: &mut String) {
-//        if is_file_path(&path) {
-//            let mut file = File::open(&path).unwrap();
-//            let mut code = String::new();
-//            file.read_to_string(&mut code).unwrap();
-//            *path = format!("{}\n{}", Self::PREFIX, code);
-//        }
-//    }
-//}
