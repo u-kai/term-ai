@@ -46,7 +46,7 @@ pub mod test_tool {
             file.write_all(content.as_bytes()).unwrap();
         }
         pub fn create_root(&self) {
-            std::fs::create_dir(self.root.as_str()).unwrap();
+            std::fs::create_dir(self.root.as_str()).unwrap_or_default();
         }
         pub fn remove_dir_all(&self) {
             std::fs::remove_dir_all(self.root.as_str()).unwrap_or_default();

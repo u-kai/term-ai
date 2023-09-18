@@ -19,10 +19,7 @@ pub trait GptFunction {
     fn switch_do_action(&mut self, request: &Message) {}
     fn change_request(&self, request: &mut Message) {}
     fn handle_stream(&mut self, response: &ChatResponse) -> HandleResult {
-        match response {
-            ChatResponse::DeltaContent(_content) => HandleResult::Progress,
-            ChatResponse::Done => HandleResult::Done,
-        }
+        HandleResult::from(response)
     }
     fn action_at_end(&mut self) -> Result<(), Box<dyn std::error::Error + 'static>> {
         Ok(())

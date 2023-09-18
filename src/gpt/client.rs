@@ -93,6 +93,14 @@ pub enum HandleResult {
     Done,
     Err(GptClientError),
 }
+impl From<&ChatResponse> for HandleResult {
+    fn from(res: &ChatResponse) -> Self {
+        match res {
+            ChatResponse::DeltaContent(_content) => HandleResult::Progress,
+            ChatResponse::Done => HandleResult::Done,
+        }
+    }
+}
 
 pub struct GptClient {
     key: OpenAIKey,
