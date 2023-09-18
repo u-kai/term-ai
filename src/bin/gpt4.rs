@@ -1,7 +1,7 @@
 use term_ai::{
     functions::{
         code_capture::GptCodeCapture, code_reviewer::CodeReviewer, repl::ChatGptRepl,
-        translator::FileTranslator,
+        speaker::MacSpeaker, translator::FileTranslator,
     },
     gpt::client::{ChatResponse, HandleResult, OpenAIModel},
 };
@@ -12,7 +12,6 @@ fn main() {
     //repl.add_functions(Box::new(CodeReviewer::default()));
     repl.add_functions(Box::new(FileTranslator::new()));
     repl.add_functions(Box::new(GptCodeCapture::new_with_file_writer(".")));
-    let mut s = String::new();
+    repl.add_functions(Box::new(MacSpeaker::new()));
     repl.repl_gpt4().unwrap();
-    println!("{:#?}", s);
 }

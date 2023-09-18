@@ -1,127 +1,144 @@
-//#[cfg(target_os = "macos")]
-//use crate::wrapper::speaker::Speaker;
-use clap::{Parser, Subcommand};
-//
-//use crate::{
-//    gpt::{GptClient, OpenAIModel},
-//    repl::{GptMessageHandler, GptRepl},
-//    wrapper::{
-//        any::{AnyHandler, GptInput, Printer},
-//        code_capture::{CodeCaptureGpt, SampleFileMaker},
-//        code_reviewer::CodeReviewer,
-//        first_command::FirstSystemCommand,
-//        translator::{FileTranslator, TranslateWriter, Translator},
-//    },
-//};
+#[cfg(target_os = "macos")]
+use crate::functions::speaker::MacSpeaker;
+use crate::{
+    functions::{
+        code_capture::{CodeCapture, GptCodeCapture},
+        code_reviewer::CodeReviewer,
+        repl::ChatGptRepl,
+        translator::FileTranslator,
+        GptFunction, GptFunctionContainer,
+    },
+    gpt::{
+        chat::ChatGpt,
+        client::{HandleResult, Message, OpenAIModel, Role},
+    },
+};
+use clap::Parser;
+use std::{io::Write, str::FromStr};
 #[derive(Parser)]
 pub struct TermAi {
-    #[clap(subcommand)]
-    sub: Sub,
+    #[clap(short = 'c', long = "code-capture")]
+    code_capture: bool,
+    #[clap(short = 'r', long = "code-reviewer")]
+    code_reviewer: bool,
+    #[clap(short = 'f', long = "file-translator")]
+    file_translator: bool,
+    #[clap(short = 't', long = "english-teacher")]
+    english_teacher: bool,
+    #[clap(short = 'p', long = "repl")]
+    repl: bool,
+    #[clap(short = 'v', long = "gpt", default_value = "gpt3")]
+    gpt: GptVersion,
+    #[cfg(target_os = "macos")]
+    #[clap(short = 's', long = "speaker")]
+    speaker: bool,
+    source: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum GptVersion {
+    Gpt3,
+    Gpt4,
+}
+impl FromStr for GptVersion {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "gpt3" | "3" => Ok(Self::Gpt3),
+            "gpt4" | "4" => Ok(Self::Gpt4),
+            _ => Err(format!("{} is not supported", s)),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    #[allow(non_snake_case)]
+    fn cliのoptionからGptFunctionContainerを生成できる() {
+        let termai = TermAi::parse_from(&["termai", "-c", "-r", "-f", "-t", "-v", "4"]);
+        let container = termai.gen_functions();
+    }
+    #[test]
+    fn cliはcode_capture機能を利用するか選択できる() {}
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn cliはspeaker機能を利用するか選択できる() {}
+    #[test]
+    fn cliはcode_reviewer機能を利用するか選択できる() {}
+    #[test]
+    fn cliはfile_translator機能を利用するか選択できる() {}
+    #[test]
+    fn cliは翻訳機能を利用するか選択できる() {}
+    #[test]
+    fn cliはreplか選択できる() {}
+    #[test]
+    fn cliはgpt3か選択できる() {}
+    #[test]
+    fn cliはgpt4か選択できる() {}
 }
 
 impl TermAi {
     pub fn new() -> Self {
         Self::parse()
     }
+    fn gen_functions(&self) -> GptFunctionContainer {
+        let mut result = GptFunctionContainer::new();
+        if self.code_capture {
+            result.add_functions(Box::new(GptCodeCapture::new_with_file_writer(".")));
+        };
+        if self.code_reviewer {
+            result.add_functions(Box::new(CodeReviewer::new(".")));
+        };
+        if self.file_translator {
+            result.add_functions(Box::new(FileTranslator::new()));
+        };
+        if self.speaker {
+            #[cfg(target_os = "macos")]
+            result.add_functions(Box::new(MacSpeaker::new()));
+        }
+        result
+    }
     pub fn run(&self) {
-        //match &self.sub {
-        //    Sub::Translate { path } => {
-        //        let mut any = AnyHandler::new(GptClient::from_env().unwrap());
-        //        let file_translator = FileTranslator::new();
-        //        let printer = Printer::new();
-        //        any.add_event_handler(Box::new(printer));
-        //        any.add_input_convertor(Box::new(file_translator.clone()));
-        //        any.add_response_handler(Box::new(file_translator.clone()));
-        //        any.handle(GptInput::new(
-        //            path,
-        //            OpenAIModel::Gpt3Dot5Turbo,
-        //            crate::gpt::Role::User,
-        //        ))
-        //        .unwrap();
-        //    }
-        //    Sub::Gpt3(option) => {
-        //        Self::print_init("GPT3 REPL");
-        //        let mut gpt = GptRepl::from_env(OpenAIModel::Gpt3Dot5Turbo).unwrap();
-        //        self.set_option(&mut gpt, option);
-        //        gpt.repl().unwrap();
-        //    }
-        //    Sub::EnglishTeacher(option) => {
-        //        Self::print_wait_settings("GPT3 English Teacher");
-        //        let first_command =
-        //"今後私が記述する文章を英語に翻訳して，それぞれの部分がなぜそのように翻訳されたのかを日本語で詳しく説明してください";
-        //        let mut gpt = GptRepl::new(FirstSystemCommand::from_env(first_command).unwrap());
-        //        self.set_option(&mut gpt, option);
-        //        gpt.repl().unwrap();
-        //    }
-        //    Sub::Review(option) => {
-        //        Self::print_init("Code Reviewer");
-        //        let mut gpt = GptRepl::new(CodeReviewer::from_env().unwrap());
-        //        self.set_option(&mut gpt, option);
-        //        gpt.repl().unwrap();
-        //    }
-        //    Sub::Capture(option) => {
-        //        Self::print_wait_settings("Code Capture");
-        //        let mut gpt =
-        //            GptRepl::new(CodeCaptureGpt::from_env(SampleFileMaker::new()).unwrap());
-        //        self.set_option(&mut gpt, option);
-        //        gpt.repl().unwrap();
-        //    }
-        //    #[cfg(target_os = "macos")]
-        //    Sub::Speaker(option) => {
-        //        Self::print_init("Speaker");
-        //        let mut gpt = GptRepl::new(Speaker::from_env().unwrap());
-        //        self.set_option(&mut gpt, option);
-        //        gpt.repl().unwrap();
-        //    }
-        //    Sub::Translator {
-        //        your_display,
-        //        ai_display,
-        //        write_mode,
-        //    } => {
-        //        if *write_mode {
-        //            Self::print_init("Translator");
-        //            let mut gpt = GptRepl::new(TranslateWriter::from_env().unwrap());
-        //            let option = CommandOption {
-        //                ai_display: ai_display.clone(),
-        //                your_display: your_display.clone(),
-        //            };
-        //            self.set_option(&mut gpt, &option);
-        //            gpt.repl().unwrap();
-        //        } else {
-        //            Self::print_init("Translator");
-        //            let mut gpt = GptRepl::new(Translator::from_env().unwrap());
-        //            let option = CommandOption {
-        //                ai_display: ai_display.clone(),
-        //                your_display: your_display.clone(),
-        //            };
-        //            self.set_option(&mut gpt, &option);
-        //            gpt.repl().unwrap();
-        //        }
-        //    }
-        //    Sub::FirstSystemCommand {
-        //        ai_display,
-        //        your_display,
-        //        first_command,
-        //    } => {
-        //        Self::print_init("First System Command");
-        //        let option = CommandOption {
-        //            ai_display: ai_display.clone(),
-        //            your_display: your_display.clone(),
-        //        };
-
-        //        let first_command = if first_command.is_some() {
-        //            first_command.clone().unwrap()
-        //        } else {
-        //            std::env::var("GPT_FIRST_COMMAND").unwrap()
-        //        };
-        //        println!("request ->  {}", first_command);
-        //        let mut gpt = GptRepl::new(
-        //            FirstSystemCommand::with_display_first_response(&first_command).unwrap(),
-        //        );
-        //        self.set_option(&mut gpt, &option);
-        //        gpt.repl().unwrap();
-        //    }
-        //}
+        let mut gpt = ChatGpt::from_env().unwrap();
+        let model = if self.gpt == GptVersion::Gpt3 {
+            OpenAIModel::Gpt3Dot5Turbo
+        } else {
+            OpenAIModel::Gpt4
+        };
+        if self.english_teacher {
+            gpt.chat(
+                model,
+                Message::new(
+                    Role::System,
+                    "これから私が記述する英語を日本語でわかりやすく翻訳してください.",
+                ),
+                &mut |res| HandleResult::from(res),
+            )
+            .unwrap();
+        }
+        let mut functions = self.gen_functions();
+        if self.repl {
+            let mut repl = ChatGptRepl::new_with_functions(gpt, functions);
+        } else {
+            let mut message = self
+                .make_message()
+                .expect("gpt source is not found, so you want to use gpt, you must set argument");
+            functions.switch_do_action(&message);
+            functions.change_request(&mut message);
+            gpt.chat(model, message, &mut |res| {
+                print!("{}", res.delta_content());
+                std::io::stdout().flush().unwrap();
+                functions.handle_stream(res)
+            })
+            .unwrap();
+            functions.action_at_end().unwrap();
+        }
+    }
+    fn make_message(&self) -> Result<Message, String> {
+        let source = self.source.as_ref().ok_or("source is not found")?;
+        Ok(Message::new(Role::User, source))
     }
     fn print_init(client: &str) {
         println!("Welcome to {} REPL", client);
@@ -131,63 +148,4 @@ impl TermAi {
         println!("connecting to GPT3...");
         println!("Please wait a few seconds...");
     }
-    //fn set_option<E: std::error::Error, T: GptMessageHandler<E>>(
-    //    &self,
-    //    gpt: &mut GptRepl<E, T>,
-    //    option: &CommandOption,
-    //) {
-    //    if let Some(your_display) = &option.your_display {
-    //        gpt.set_user_name(your_display);
-    //    }
-    //    if let Some(ai_display) = &option.ai_display {
-    //        gpt.set_gpt_display(ai_display);
-    //    }
-    //}
-}
-
-#[derive(Subcommand)]
-enum Sub {
-    #[clap(name = "translate", about = "Translate")]
-    Translate {
-        #[clap(short, long)]
-        path: String,
-    },
-    Gpt3(CommandOption),
-    #[clap(name = "trans", about = "Translator")]
-    Translator {
-        #[clap(short, long)]
-        your_display: Option<String>,
-        #[clap(short, long)]
-        ai_display: Option<String>,
-        #[clap(short, long)]
-        write_mode: bool,
-    },
-    #[clap(name = "ent", about = "English Teacher")]
-    EnglishTeacher(CommandOption),
-    Review(CommandOption),
-    #[clap(
-        name = "capt",
-        about = "capture your code and dist to sample_for_gpt_xxxxxx.LANG"
-    )]
-    Capture(CommandOption),
-    #[clap(name = "first", about = "First System Command")]
-    FirstSystemCommand {
-        #[clap(short, long)]
-        your_display: Option<String>,
-        #[clap(short, long)]
-        ai_display: Option<String>,
-        #[clap(short, long)]
-        first_command: Option<String>,
-    },
-    #[cfg(target_os = "macos")]
-    #[clap(name = "speaker", about = "Speaker for macos")]
-    Speaker(CommandOption),
-}
-
-#[derive(Debug, clap::Args)]
-struct CommandOption {
-    #[clap(short, long)]
-    your_display: Option<String>,
-    #[clap(short, long)]
-    ai_display: Option<String>,
 }

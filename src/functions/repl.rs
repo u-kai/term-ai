@@ -22,6 +22,14 @@ impl ChatGptRepl {
             container: GptFunctionContainer::new(),
         }
     }
+    pub fn new_with_functions(gpt: ChatGpt, functions: GptFunctionContainer) -> Self {
+        Self {
+            chat_gpt: gpt,
+            display_gpt: std::env::var("DISPLAY_GPT").unwrap_or("gpt".to_string()),
+            display_user: std::env::var("USER").unwrap_or("you".to_string()),
+            container: functions,
+        }
+    }
     pub fn add_functions(&mut self, f: Box<dyn GptFunction>) {
         self.container.add_functions(f);
     }

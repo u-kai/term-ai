@@ -40,6 +40,7 @@ impl ChatHistory {
     }
 }
 
+#[derive(Debug)]
 pub struct ChatManager {
     delta_store: DeltaContentStore,
     history: ChatHistory,
@@ -96,7 +97,7 @@ impl DeltaContentStore {
 
 pub struct ChatGpt {
     client: GptClient,
-    manager: ChatManager,
+    pub(crate) manager: ChatManager,
 }
 impl ChatGpt {
     pub fn new(key: OpenAIKey) -> Self {
@@ -111,6 +112,7 @@ impl ChatGpt {
             manager: ChatManager::new(),
         })
     }
+
     pub fn chat<F: FnMut(&ChatResponse) -> HandleResult>(
         &mut self,
         model: OpenAIModel,
@@ -119,6 +121,7 @@ impl ChatGpt {
     ) -> Result<()> {
         self.manager.update_by_request(message);
         let req = self.manager.make_request(model);
+        println!("req: {:?}", req);
         self.client.request_mut_fn(req, |res| {
             self.manager.update_by_response(res);
             f(res)
