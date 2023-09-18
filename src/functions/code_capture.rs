@@ -41,9 +41,9 @@ use super::GptFunction;
 //    }
 //}
 //
-//pub trait CodeWriter {
-//    fn write_all(&mut self, code: Code) -> Result<(), std::io::Error>;
-//}
+pub trait CodeWriter {
+    fn write_all(&mut self, code: Vec<Code>) -> Result<(), std::io::Error>;
+}
 //
 //#[derive(Debug, Clone)]
 //pub struct CodeCaptureGpt<W: CodeWriter> {
@@ -89,12 +89,14 @@ use super::GptFunction;
 //
 //
 #[derive(Debug, Clone)]
-pub struct GptCodeCapture {
+pub struct GptCodeCapture<W: CodeWriter> {
+    writer: W,
     inner: CodeCapture,
 }
-impl GptCodeCapture {
-    pub fn new() -> Self {
+impl<W: CodeWriter> GptCodeCapture<W> {
+    pub fn new(writer: W) -> Self {
         Self {
+            writer,
             inner: CodeCapture::new(),
         }
     }
@@ -103,7 +105,7 @@ impl GptCodeCapture {
     }
 }
 
-impl GptFunction for GptCodeCapture {
+impl<W: CodeWriter> GptFunction for GptCodeCapture<W> {
     fn handle_stream(
         &mut self,
         response: &crate::gpt::client::ChatResponse,
@@ -115,6 +117,9 @@ impl GptFunction for GptCodeCapture {
             }
             crate::gpt::client::ChatResponse::Done => crate::gpt::client::HandleResult::Done,
         }
+    }
+    fn action_at_end(&mut self) {
+        self.writer.write_all(self.inner.get_codes()).unwrap();
     }
 }
 #[derive(Debug, Clone)]
@@ -248,10 +253,33 @@ impl Lang {
 mod tests {
     use crate::gpt::client::{ChatResponse, HandleResult};
 
+    impl CodeWriter for &mut String {
+        fn write_all(&mut self, codes: Vec<Code>) -> Result<(), std::io::Error> {
+            for code in codes {
+                self.push_str(&code.code);
+            }
+            Ok(())
+        }
+    }
     use super::*;
     #[test]
+    fn gptのレスポンス終了時にcodeが存在していればwriterを利用して書き込みを行う() {
+        let mut buf = String::new();
+        let mut function = GptCodeCapture::new(&mut buf);
+        let code = "fn main(){println!();}";
+        function.handle_stream(&ChatResponse::DeltaContent("```rust\n".to_string()));
+        function.handle_stream(&ChatResponse::DeltaContent(code.to_string()));
+        function.handle_stream(&ChatResponse::DeltaContent("```".to_string()));
+        function.handle_stream(&ChatResponse::Done);
+
+        function.action_at_end();
+
+        assert_eq!(buf, code);
+    }
+    #[test]
     fn gptからのsseレスポンスを受け取って内部に保存する() {
-        let mut function = GptCodeCapture::new();
+        let mut buf = String::new();
+        let mut function = GptCodeCapture::new(&mut buf);
         let code = "fn main(){println!();}";
         let progress = function.handle_stream(&ChatResponse::DeltaContent("```rust\n".to_string()));
         assert_eq!(progress, HandleResult::Progress);
