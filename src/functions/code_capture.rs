@@ -276,7 +276,7 @@ mod tests {
         function.handle_stream(&ChatResponse::DeltaContent("```".to_string()));
         function.handle_stream(&ChatResponse::Done);
 
-        function.action_at_end();
+        function.action_at_end().unwrap();
 
         let result = std::fs::read_to_string(format!(
             "{}/{}{}.rs",
@@ -299,7 +299,7 @@ mod tests {
         function.handle_stream(&ChatResponse::DeltaContent("```".to_string()));
         function.handle_stream(&ChatResponse::Done);
 
-        function.action_at_end();
+        function.action_at_end().unwrap();
 
         assert_eq!(buf, code);
     }

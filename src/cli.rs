@@ -120,7 +120,7 @@ impl Gpt {
         let mut functions = self.gen_functions();
         if self.repl {
             let mut repl = ChatGptRepl::new_with_functions(gpt, functions);
-            repl.repl(model);
+            repl.repl(model).unwrap();
         } else {
             let mut message = self
                 .make_message()

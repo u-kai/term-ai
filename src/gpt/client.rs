@@ -88,7 +88,7 @@ pub trait StreamChatMutHandler<T> {
     fn result(&self) -> T;
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Eq)]
 pub enum HandleResult {
     Progress,
     Done,
@@ -103,20 +103,21 @@ impl From<&ChatResponse> for HandleResult {
     }
 }
 
+#[derive(Debug, PartialEq, Clone, Default, Eq)]
+pub struct GptClientOption {
+    proxy: Option<String>,
+    ca_path: Option<String>,
+}
+
 pub struct GptClient {
     key: OpenAIKey,
     sse_client: SseClient<SseTlsConnector>,
 }
 impl GptClient {
     const URL: &'static str = "https://api.openai.com/v1/chat/completions";
-    pub fn new(key: OpenAIKey) -> Self {
-        let sse_client = Self::client();
-        Self { key, sse_client }
-    }
-    pub fn from_env() -> Result<Self> {
-        let key = OpenAIKey::from_env()?;
+    pub fn new(key: OpenAIKey, option: GptClientOption) -> Result<Self> {
         let mut builder = Self::client_builder();
-        if let Some(proxy) = proxy_from_env() {
+        if let Some(proxy) = option.proxy {
             builder = builder
                 .proxy(&Url::from_str(&proxy).map_err(|e| {
                     GptClientError::new(
@@ -131,7 +132,7 @@ impl GptClient {
                     )
                 })?;
         }
-        if let Some(ca) = root_ca_from_env() {
+        if let Some(ca) = option.ca_path {
             builder = builder.add_ca(&ca).map_err(|e| {
                 GptClientError::new(
                     "invalid ca".to_string(),
@@ -141,6 +142,17 @@ impl GptClient {
         }
         let sse_client = builder.build();
         Ok(Self { key, sse_client })
+    }
+    pub fn from_env() -> Result<Self> {
+        let key = OpenAIKey::from_env()?;
+
+        Self::new(
+            key,
+            GptClientOption {
+                proxy: proxy_from_env(),
+                ca_path: root_ca_from_env(),
+            },
+        )
     }
     pub fn request_mut_fn<F: FnMut(&ChatResponse) -> HandleResult>(
         &mut self,
@@ -159,7 +171,7 @@ impl GptClient {
                     Err(e) => HandleProgress::Err(e),
                 }
             })
-            .map_err(|e| GptClientError::from(e))
+            .map_err(GptClientError::from)
     }
     pub fn request_mut<R, T: StreamChatMutHandler<R>>(
         &mut self,
@@ -169,7 +181,7 @@ impl GptClient {
         self.send_before(request);
         self.sse_client
             .send_mut(handler)
-            .map_err(|e| GptClientError::from(e))
+            .map_err(GptClientError::from)
     }
     pub fn request<R, T: StreamChatHandler<R>>(
         &mut self,
@@ -177,19 +189,13 @@ impl GptClient {
         handler: &GptSseHandler<R, T>,
     ) -> Result<R> {
         self.send_before(request);
-        self.sse_client
-            .send(handler)
-            .map_err(|e| GptClientError::from(e))
+        self.sse_client.send(handler).map_err(GptClientError::from)
     }
     fn send_before(&mut self, req: ChatRequest) {
         self.sse_client.post().bearer_auth(self.key.key()).json(req);
     }
     fn client_builder() -> SseClientBuilder<SseTlsConnector> {
-        let builder = SseClientBuilder::new(&Self::URL.try_into().unwrap());
-        builder
-    }
-    fn client() -> SseClient<SseTlsConnector> {
-        Self::client_builder().build()
+        SseClientBuilder::new(&Self::URL.try_into().unwrap())
     }
 }
 
@@ -231,7 +237,7 @@ impl ChatStream {
         self.0.push_str(message);
     }
 }
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ChatResponse {
     Done,
     DeltaContent(String),
@@ -256,10 +262,7 @@ impl ChatResponse {
         }
     }
     pub fn is_done(&self) -> bool {
-        match self {
-            Self::Done => true,
-            _ => false,
-        }
+        matches!(self, Self::Done)
     }
     pub fn delta_content(&self) -> &str {
         match self {
@@ -294,10 +297,8 @@ struct StreamChatChoicesDelta {
 }
 impl From<StreamChat> for ChatResponse {
     fn from(s: StreamChat) -> Self {
-        s.last_response().map_or_else(
-            || Self::DeltaContent(String::new()),
-            |s| Self::DeltaContent(s.to_string()),
-        )
+        s.last_response()
+            .map_or_else(|| Self::DeltaContent(String::new()), Self::DeltaContent)
     }
 }
 impl<T: Into<String>> From<T> for ChatResponse {
@@ -335,7 +336,7 @@ impl Display for OpenAIKey {
     }
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct ChatRequest {
     model: OpenAIModel,
     messages: Vec<Message>,
@@ -378,7 +379,7 @@ pub enum Role {
     Assistant,
 }
 impl Role {
-    fn into_str(&self) -> &'static str {
+    fn as_str(&self) -> &'static str {
         match self {
             Self::User => "user",
             Self::System => "system",
@@ -391,7 +392,7 @@ impl serde::Serialize for Role {
     where
         S: serde::Serializer,
     {
-        let role: &str = self.into_str();
+        let role: &str = self.as_str();
         serializer.serialize_str(role)
     }
 }
@@ -413,12 +414,12 @@ impl serde::Serialize for OpenAIModel {
     where
         S: serde::ser::Serializer,
     {
-        serializer.serialize_str(self.into_str())
+        serializer.serialize_str(self.as_str())
     }
 }
 
 impl OpenAIModel {
-    pub fn into_str(&self) -> &'static str {
+    pub fn as_str(&self) -> &'static str {
         match self {
             Self::Gpt3Dot5Turbo => "gpt-3.5-turbo",
             Self::Gpt4 => "gpt-4",
@@ -428,12 +429,7 @@ impl OpenAIModel {
         }
     }
 }
-impl Into<&'static str> for OpenAIModel {
-    fn into(self) -> &'static str {
-        self.into_str()
-    }
-}
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct GptClientError {
     message: String,
     kind: GptClientErrorKind,
@@ -468,13 +464,14 @@ impl Display for GptClientError {
         write!(f, "kind : {}\n message : {}", self.kind, self.message)
     }
 }
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum GptClientErrorKind {
     NotFoundCAFile(String),
     InvalidUrl(String),
     ParseError(String),
     NotFoundEnvAPIKey,
-    NotFoundResponseContent,
+    //NotFoundResponseContent,
+    ProxyConnectionError(String),
     ReadStreamError(String),
     RequestError(String),
     ResponseDeserializeError(String),
@@ -484,11 +481,12 @@ pub enum GptClientErrorKind {
 impl Display for GptClientErrorKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let kind = match self {
+            Self::ProxyConnectionError(s) => format!("Proxy Connection Error. Error is : {}", s),
             Self::NotFoundCAFile(s) => format!("Not found CA File. File is : {}", s),
             Self::NotFoundEnvAPIKey => "Not found OPENAI_API_KEY in env".to_string(),
             Self::RequestError(s) => format!("Request Error to {}", s),
             Self::NotMakeChatBody(s) => format!("Not make chat body from {}", s),
-            Self::NotFoundResponseContent => format!("Response Content is Not Found"),
+            //Self::NotFoundResponseContent => format!("Response Content is Not Found"),
             Self::ReadStreamError(s) => format!("Not Read Stream. Error is : {}", s),
             Self::ResponseDeserializeError(s) => {
                 format!("Not Deserialize response. Serde Error is :  {}", s)

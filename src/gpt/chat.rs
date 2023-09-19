@@ -1,17 +1,17 @@
 use super::client::{
-    ChatRequest, ChatResponse, GptClient, HandleResult, Message, OpenAIKey, OpenAIModel, Result,
-    Role,
+    ChatRequest, ChatResponse, GptClient, GptClientOption, HandleResult, Message, OpenAIKey,
+    OpenAIModel, Result, Role,
 };
 pub struct ChatGpt {
     client: GptClient,
     pub(crate) manager: ChatManager,
 }
 impl ChatGpt {
-    pub fn new(key: OpenAIKey) -> Self {
-        Self {
-            client: GptClient::new(key),
+    pub fn new(key: OpenAIKey, option: GptClientOption) -> Result<Self> {
+        Ok(Self {
+            client: GptClient::new(key, option)?,
             manager: ChatManager::new(),
-        }
+        })
     }
     pub fn from_env() -> Result<Self> {
         Ok(Self {
