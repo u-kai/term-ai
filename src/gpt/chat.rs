@@ -1,7 +1,48 @@
 use super::client::{
-    ChatRequest, ChatResponse, GptClient, GptClientError, HandleResult, Message, OpenAIKey,
-    OpenAIModel, Result, Role,
+    ChatRequest, ChatResponse, GptClient, HandleResult, Message, OpenAIKey, OpenAIModel, Result,
+    Role,
 };
+pub struct ChatGpt {
+    client: GptClient,
+    pub(crate) manager: ChatManager,
+}
+impl ChatGpt {
+    pub fn new(key: OpenAIKey) -> Self {
+        Self {
+            client: GptClient::new(key),
+            manager: ChatManager::new(),
+        }
+    }
+    pub fn from_env() -> Result<Self> {
+        Ok(Self {
+            client: GptClient::from_env()?,
+            manager: ChatManager::new(),
+        })
+    }
+
+    pub fn chat<F: FnMut(&ChatResponse) -> HandleResult>(
+        &mut self,
+        model: OpenAIModel,
+        message: Message,
+        f: &mut F,
+    ) -> Result<()> {
+        self.manager.update_by_request(message);
+        let req = self.manager.make_request(model);
+        self.client.request_mut_fn(req, |res| {
+            self.manager.update_by_response(res);
+            f(res)
+        })
+    }
+    pub fn clear(&mut self) {
+        self.manager.clear();
+    }
+    pub fn last_request(&self) -> Option<&Message> {
+        self.manager.last_request()
+    }
+    pub fn last_response(&self) -> &str {
+        self.manager.last_response()
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 struct ChatHistory {
@@ -92,49 +133,6 @@ impl DeltaContentStore {
     }
     fn all_content(&self) -> String {
         self.inner.join("")
-    }
-}
-
-pub struct ChatGpt {
-    client: GptClient,
-    pub(crate) manager: ChatManager,
-}
-impl ChatGpt {
-    pub fn new(key: OpenAIKey) -> Self {
-        Self {
-            client: GptClient::new(key),
-            manager: ChatManager::new(),
-        }
-    }
-    pub fn from_env() -> Result<Self> {
-        Ok(Self {
-            client: GptClient::from_env()?,
-            manager: ChatManager::new(),
-        })
-    }
-
-    pub fn chat<F: FnMut(&ChatResponse) -> HandleResult>(
-        &mut self,
-        model: OpenAIModel,
-        message: Message,
-        f: &mut F,
-    ) -> Result<()> {
-        self.manager.update_by_request(message);
-        let req = self.manager.make_request(model);
-        println!("req: {:?}", req);
-        self.client.request_mut_fn(req, |res| {
-            self.manager.update_by_response(res);
-            f(res)
-        })
-    }
-    pub fn clear(&mut self) {
-        self.manager.clear();
-    }
-    pub fn last_request(&self) -> Option<&Message> {
-        self.manager.last_request()
-    }
-    pub fn last_response(&self) -> &str {
-        self.manager.last_response()
     }
 }
 

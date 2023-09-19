@@ -1,5 +1,0 @@
-- 抽象概念をまとめて，FirstCommandやCodeCaptureなどの実装をClientに組み込めるようにする
-- CodeCaptureとかにGPTの関心ごとはいらないのでは？
-    - CodeCaptureとかにGPTを入れずにGPTのインターフェイスに必要な要素だけを吐くようにしたらどうやろうか？
-- FirstCommand をどれでもできるようにする
-- Speaker を途中で止めれるようにする(外部から Event を受け取る？そしたら handle 内を並列処理にする必要がないか？)

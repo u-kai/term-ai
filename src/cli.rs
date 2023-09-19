@@ -2,11 +2,8 @@
 use crate::functions::speaker::MacSpeaker;
 use crate::{
     functions::{
-        code_capture::{CodeCapture, GptCodeCapture},
-        code_reviewer::CodeReviewer,
-        repl::ChatGptRepl,
-        translator::FileTranslator,
-        GptFunction, GptFunctionContainer,
+        code_capture::GptCodeCapture, code_reviewer::CodeReviewer, repl::ChatGptRepl,
+        translator::FileTranslator, GptFunction, GptFunctionContainer,
     },
     gpt::{
         chat::ChatGpt,
@@ -16,15 +13,17 @@ use crate::{
 use clap::Parser;
 use std::{io::Write, str::FromStr};
 #[derive(Parser)]
-pub struct TermAi {
+pub struct Gpt {
     #[clap(short = 'c', long = "code-capture")]
     code_capture: bool,
     #[clap(short = 'r', long = "code-reviewer")]
     code_reviewer: bool,
     #[clap(short = 'f', long = "file-translator")]
     file_translator: bool,
-    #[clap(short = 't', long = "english-teacher")]
+    #[clap(short = 'e', long = "english-teacher")]
     english_teacher: bool,
+    #[clap(short = 't', long = "translate")]
+    translate: bool,
     #[clap(short = 'p', long = "repl")]
     repl: bool,
     #[clap(short = 'v', long = "gpt", default_value = "gpt3")]
@@ -57,7 +56,7 @@ mod tests {
     #[test]
     #[allow(non_snake_case)]
     fn cliのoptionからGptFunctionContainerを生成できる() {
-        let termai = TermAi::parse_from(&["termai", "-c", "-r", "-f", "-t", "-v", "4"]);
+        let termai = Gpt::parse_from(&["gpt", "-c", "-r", "-f", "-t", "-v", "4"]);
         let container = termai.gen_functions();
     }
     #[test]
@@ -79,7 +78,7 @@ mod tests {
     fn cliはgpt4か選択できる() {}
 }
 
-impl TermAi {
+impl Gpt {
     pub fn new() -> Self {
         Self::parse()
     }
@@ -111,8 +110,8 @@ impl TermAi {
             gpt.chat(
                 model,
                 Message::new(
-                    Role::System,
-                    "これから私が記述する英語を日本語でわかりやすく翻訳してください.",
+                    Role::User,
+                    "これから私が記述する全ての英語を日本語でわかりやすく翻訳してください.",
                 ),
                 &mut |res| HandleResult::from(res),
             )
@@ -121,6 +120,7 @@ impl TermAi {
         let mut functions = self.gen_functions();
         if self.repl {
             let mut repl = ChatGptRepl::new_with_functions(gpt, functions);
+            repl.repl(model);
         } else {
             let mut message = self
                 .make_message()
@@ -137,8 +137,20 @@ impl TermAi {
         }
     }
     fn make_message(&self) -> Result<Message, String> {
-        let source = self.source.as_ref().ok_or("source is not found")?;
-        Ok(Message::new(Role::User, source))
+        if self.translate {
+            Ok(Message::new(
+                Role::User,
+                format!(
+                    "以下を日本語に翻訳してください\n {}",
+                    self.source.as_ref().unwrap_or(&String::new())
+                ),
+            ))
+        } else {
+            Ok(Message::new(
+                Role::User,
+                self.source.as_ref().unwrap_or(&String::new()),
+            ))
+        }
     }
     fn print_init(client: &str) {
         println!("Welcome to {} REPL", client);

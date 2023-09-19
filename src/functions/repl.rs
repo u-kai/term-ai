@@ -2,10 +2,10 @@ use std::io::Write;
 
 use crate::gpt::{
     chat::ChatGpt,
-    client::{GptClientError, HandleResult, Message, OpenAIModel, Role},
+    client::{Message, OpenAIModel, Role},
 };
 
-use super::{GptDefaultFunction, GptFunction, GptFunctionContainer};
+use super::{GptFunction, GptFunctionContainer};
 
 pub struct ChatGptRepl {
     chat_gpt: ChatGpt,
