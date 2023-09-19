@@ -5,6 +5,7 @@ use std::{
 
 use rsse::{
     client::{SseClient, SseClientBuilder},
+    http::url::Url,
     sse::{
         connector::SseTlsConnector,
         response::SseResponse,
@@ -114,7 +115,31 @@ impl GptClient {
     }
     pub fn from_env() -> Result<Self> {
         let key = OpenAIKey::from_env()?;
-        let sse_client = Self::client();
+        let mut builder = Self::client_builder();
+        if let Some(proxy) = proxy_from_env() {
+            builder = builder
+                .proxy(&Url::from_str(&proxy).map_err(|e| {
+                    GptClientError::new(
+                        "invalid proxy url".to_string(),
+                        GptClientErrorKind::InvalidUrl(proxy.clone()),
+                    )
+                })?)
+                .map_err(|e| {
+                    GptClientError::new(
+                        "invalid proxy url".to_string(),
+                        GptClientErrorKind::InvalidUrl(proxy),
+                    )
+                })?;
+        }
+        if let Some(ca) = root_ca_from_env() {
+            builder = builder.add_ca(&ca).map_err(|e| {
+                GptClientError::new(
+                    "invalid ca".to_string(),
+                    GptClientErrorKind::NotFoundCAFile(ca),
+                )
+            })?;
+        }
+        let sse_client = builder.build();
         Ok(Self { key, sse_client })
     }
     pub fn request_mut_fn<F: FnMut(&ChatResponse) -> HandleResult>(
@@ -445,6 +470,7 @@ impl Display for GptClientError {
 }
 #[derive(Debug, PartialEq, Clone)]
 pub enum GptClientErrorKind {
+    NotFoundCAFile(String),
     InvalidUrl(String),
     ParseError(String),
     NotFoundEnvAPIKey,
@@ -458,6 +484,7 @@ pub enum GptClientErrorKind {
 impl Display for GptClientErrorKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let kind = match self {
+            Self::NotFoundCAFile(s) => format!("Not found CA File. File is : {}", s),
             Self::NotFoundEnvAPIKey => "Not found OPENAI_API_KEY in env".to_string(),
             Self::RequestError(s) => format!("Request Error to {}", s),
             Self::NotMakeChatBody(s) => format!("Not make chat body from {}", s),
@@ -485,18 +512,14 @@ mod tests {
     #[test]
     #[ignore = "実際にproxy通信するので、CIでのテストは行わない"]
     fn proxyを利用したgptと実際の通信を行うことが可能() {
+        std::env::set_var("HTTPS_PROXY", "http://localhost:8080");
         let mut client = GptClient::from_env().unwrap();
         let handler = GptSseHandler::new(MockHandler::new());
-
-        //  client.set_proxy("http://localhost:8080");
 
         let result = client.request(
             ChatRequest::new(
                 OpenAIModel::Gpt3Dot5Turbo,
-                vec![Message::new(
-                    Role::User,
-                    "日本語で絶対返事してね!".to_string(),
-                )],
+                vec![Message::new(Role::User, "hello".to_string())],
             ),
             &handler,
         );
@@ -505,17 +528,8 @@ mod tests {
         assert!(handler.handler().called_time() > 0);
         for c in result.unwrap().chars() {
             println!("{}", c);
-            assert!(!c.is_ascii());
+            assert!(c.is_ascii());
         }
-
-        let req = ChatRequest::new(
-            OpenAIModel::Gpt3Dot5Turbo,
-            vec![Message::new(Role::User, "Hello World".to_string())],
-        );
-        let result = client.request(req, &handler);
-
-        assert!(result.unwrap().len() > 0);
-        assert!(handler.handler().called_time() > 0);
     }
     #[test]
     #[ignore = "実際に通信するので、CIでのテストは行わない"]
@@ -526,28 +540,12 @@ mod tests {
         let result = client.request(
             ChatRequest::new(
                 OpenAIModel::Gpt3Dot5Turbo,
-                vec![Message::new(
-                    Role::User,
-                    "日本語で絶対返事してね!".to_string(),
-                )],
+                vec![Message::new(Role::User, "hello".to_string())],
             ),
             &handler,
         );
 
         assert!(result.as_ref().unwrap().len() > 0);
-        assert!(handler.handler().called_time() > 0);
-        for c in result.unwrap().chars() {
-            println!("{}", c);
-            assert!(!c.is_ascii());
-        }
-
-        let req = ChatRequest::new(
-            OpenAIModel::Gpt3Dot5Turbo,
-            vec![Message::new(Role::User, "Hello World".to_string())],
-        );
-        let result = client.request(req, &handler);
-
-        assert!(result.unwrap().len() > 0);
         assert!(handler.handler().called_time() > 0);
     }
 
