@@ -159,11 +159,40 @@ impl GptClient {
     fn send_before(&mut self, req: ChatRequest) {
         self.sse_client.post().bearer_auth(self.key.key()).json(req);
     }
+    fn client_builder() -> SseClientBuilder<SseTlsConnector> {
+        let builder = SseClientBuilder::new(&Self::URL.try_into().unwrap());
+        builder
+    }
     fn client() -> SseClient<SseTlsConnector> {
-        SseClientBuilder::new(&Self::URL.try_into().unwrap()).build()
+        Self::client_builder().build()
     }
 }
 
+fn root_ca_from_env() -> Option<String> {
+    match std::env::var("CA_BUNDLE") {
+        Ok(ca) => Some(ca),
+        Err(_) => match std::env::var("ca_bundle") {
+            Ok(ca) => Some(ca),
+            Err(_) => None,
+        },
+    }
+}
+
+fn proxy_from_env() -> Option<String> {
+    match std::env::var("HTTPS_PROXY") {
+        Ok(proxy) => Some(proxy),
+        Err(_) => match std::env::var("https_proxy") {
+            Ok(proxy) => Some(proxy),
+            Err(_) => match std::env::var("HTTP_PROXY") {
+                Ok(proxy) => Some(proxy),
+                Err(_) => match std::env::var("http_proxy") {
+                    Ok(proxy) => Some(proxy),
+                    Err(_) => None,
+                },
+            },
+        },
+    }
+}
 #[derive(Debug)]
 struct ChatStream(String);
 impl ChatStream {
@@ -453,6 +482,41 @@ mod tests {
     use super::fakes::*;
     use super::*;
 
+    #[test]
+    #[ignore = "実際にproxy通信するので、CIでのテストは行わない"]
+    fn proxyを利用したgptと実際の通信を行うことが可能() {
+        let mut client = GptClient::from_env().unwrap();
+        let handler = GptSseHandler::new(MockHandler::new());
+
+        //  client.set_proxy("http://localhost:8080");
+
+        let result = client.request(
+            ChatRequest::new(
+                OpenAIModel::Gpt3Dot5Turbo,
+                vec![Message::new(
+                    Role::User,
+                    "日本語で絶対返事してね!".to_string(),
+                )],
+            ),
+            &handler,
+        );
+
+        assert!(result.as_ref().unwrap().len() > 0);
+        assert!(handler.handler().called_time() > 0);
+        for c in result.unwrap().chars() {
+            println!("{}", c);
+            assert!(!c.is_ascii());
+        }
+
+        let req = ChatRequest::new(
+            OpenAIModel::Gpt3Dot5Turbo,
+            vec![Message::new(Role::User, "Hello World".to_string())],
+        );
+        let result = client.request(req, &handler);
+
+        assert!(result.unwrap().len() > 0);
+        assert!(handler.handler().called_time() > 0);
+    }
     #[test]
     #[ignore = "実際に通信するので、CIでのテストは行わない"]
     fn gptと実際の通信を行うことが可能() {

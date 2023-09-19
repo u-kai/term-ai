@@ -7,7 +7,7 @@ pub struct CodeReviewer {
 }
 
 impl CodeReviewer {
-    const PREFIX: &'static str = "以下のコードをレビューしてください";
+    const PREFIX: &'static str = "以下のコードを日本語でレビューしてください";
     pub fn new(prefix: &'static str) -> Self {
         Self { prefix }
     }
