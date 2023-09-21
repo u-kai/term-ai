@@ -1,3 +1,4 @@
+use std::fmt::Display;
 #[cfg(target_os = "macos")]
 use std::process::Command;
 
@@ -84,7 +85,7 @@ impl MacSayCommandSpeaker {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MultiLangSentence {
     inner: Vec<MultiLang>,
 }
@@ -121,8 +122,12 @@ impl MultiLangSentence {
             .join("")
     }
 }
-
-#[derive(Debug, Clone, PartialEq)]
+impl Default for MacSpeaker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MultiLang {
     English(String),
     Japanese(String),

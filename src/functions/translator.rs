@@ -7,11 +7,16 @@ use super::{
     GptFunction,
 };
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct FileTranslator {
     source_path: String,
     do_action: bool,
     inner: String,
+}
+impl Default for FileTranslator {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl FileTranslator {

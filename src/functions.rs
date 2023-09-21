@@ -22,6 +22,16 @@ impl GptFunctionContainer {
         self.functions.push(f);
     }
 }
+impl Default for GptFunctionContainer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+impl Default for GptDefaultFunction {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 impl GptFunction for GptFunctionContainer {
     fn switch_do_action(&mut self, request: &Message) {
         self.functions

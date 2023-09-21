@@ -13,22 +13,33 @@ pub struct ChatGptRepl {
     display_user: String,
     container: GptFunctionContainer,
 }
+impl Default for ChatGptRepl {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 impl ChatGptRepl {
     pub fn new() -> Self {
         Self {
             chat_gpt: ChatGpt::from_env().unwrap(),
-            display_gpt: std::env::var("DISPLAY_GPT").unwrap_or("gpt".to_string()),
-            display_user: std::env::var("USER").unwrap_or("you".to_string()),
+            display_gpt: Self::display_gpt_from_env(),
+            display_user: Self::display_user_from_env(),
             container: GptFunctionContainer::new(),
         }
     }
     pub fn new_with_functions(gpt: ChatGpt, functions: GptFunctionContainer) -> Self {
         Self {
             chat_gpt: gpt,
-            display_gpt: std::env::var("DISPLAY_GPT").unwrap_or("gpt".to_string()),
-            display_user: std::env::var("USER").unwrap_or("you".to_string()),
+            display_gpt: Self::display_gpt_from_env(),
+            display_user: Self::display_user_from_env(),
             container: functions,
         }
+    }
+    fn display_user_from_env() -> String {
+        std::env::var("USER").unwrap_or_else(|_| "you".to_string())
+    }
+    fn display_gpt_from_env() -> String {
+        std::env::var("DISPLAY_GPT").unwrap_or_else(|_| "gpt".to_string())
     }
     pub fn add_functions(&mut self, f: Box<dyn GptFunction>) {
         self.container.add_functions(f);
@@ -58,7 +69,7 @@ impl ChatGptRepl {
 
             self.gpt_first();
             self.chat_gpt.chat(model, message, &mut |res| {
-                Self::gpt_message(&res.delta_content());
+                Self::gpt_message(res.delta_content());
                 self.container.handle_stream(res)
             })?;
 

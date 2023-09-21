@@ -86,6 +86,11 @@ pub struct ChatManager {
     delta_store: DeltaContentStore,
     history: ChatHistory,
 }
+impl Default for ChatManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 impl ChatManager {
     pub fn new() -> Self {
         Self {
