@@ -46,7 +46,7 @@ impl GptFunction for GptFunctionContainer {
     fn handle_stream(&mut self, response: &ChatResponse) -> HandleResult {
         self.functions
             .iter_mut()
-            .fold(HandleResult::Progress, |acc, f| f.handle_stream(response))
+            .fold(HandleResult::Progress, |_acc, f| f.handle_stream(response))
     }
     fn action_at_end(&mut self) -> Result<(), Box<dyn std::error::Error + 'static>> {
         self.functions
@@ -109,8 +109,8 @@ impl GptDefaultFunction {
 impl GptFunction for GptDefaultFunction {}
 
 pub trait GptFunction {
-    fn switch_do_action(&mut self, request: &Message) {}
-    fn change_request(&self, request: &mut Message) {}
+    fn switch_do_action(&mut self, _request: &Message) {}
+    fn change_request(&self, _request: &mut Message) {}
     fn handle_stream(&mut self, response: &ChatResponse) -> HandleResult {
         HandleResult::from(response)
     }

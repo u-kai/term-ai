@@ -34,7 +34,7 @@ pub struct Gpt {
     source: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GptVersion {
     Gpt3,
     Gpt4,
@@ -76,6 +76,12 @@ mod tests {
     fn cliはgpt3か選択できる() {}
     #[test]
     fn cliはgpt4か選択できる() {}
+}
+
+impl Default for Gpt {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Gpt {
@@ -151,13 +157,5 @@ impl Gpt {
                 self.source.as_ref().unwrap_or(&String::new()),
             ))
         }
-    }
-    fn print_init(client: &str) {
-        println!("Welcome to {} REPL", client);
-    }
-    fn print_wait_settings(client: &str) {
-        Self::print_init(client);
-        println!("connecting to GPT3...");
-        println!("Please wait a few seconds...");
     }
 }

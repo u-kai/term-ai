@@ -111,15 +111,19 @@ impl MultiLangSentence {
     pub fn iter(&self) -> impl Iterator<Item = &MultiLang> {
         self.inner.iter()
     }
-    pub fn to_string(&self) -> String {
-        self.inner
+}
+impl Display for MultiLangSentence {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = self
+            .inner
             .iter()
             .map(|lang| match lang {
                 MultiLang::English(s) => s.to_string(),
                 MultiLang::Japanese(s) => s.to_string(),
             })
             .collect::<Vec<String>>()
-            .join("")
+            .join("");
+        write!(f, "{}", s)
     }
 }
 impl Default for MacSpeaker {

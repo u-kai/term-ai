@@ -29,7 +29,6 @@ impl FileTranslator {
         }
     }
     fn append_result(&mut self) -> Result<(), std::io::Error> {
-        let path = self.source_path.as_str();
         let mut file = std::fs::OpenOptions::new()
             .append(true)
             .open(self.source_path.as_str())?;

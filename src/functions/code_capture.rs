@@ -91,6 +91,11 @@ impl<W: CodeWriter> GptFunction for GptCodeCapture<W> {
 pub struct CodeCapture {
     inner: String,
 }
+impl Default for CodeCapture {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 impl CodeCapture {
     pub fn new() -> Self {
         Self {
@@ -114,7 +119,7 @@ impl CodeCapture {
                 if i % 2 == 0 {
                     return None;
                 }
-                let mut lang_and_code = line.splitn(2, "\n");
+                let mut lang_and_code = line.splitn(2, '\n');
                 let Some(lang) = lang_and_code.next() else {
                     // case output in progress
                     // then None
@@ -229,6 +234,11 @@ impl DefaultRandGenerator {
         Self {
             rand: rand::thread_rng(),
         }
+    }
+}
+impl Default for DefaultRandGenerator {
+    fn default() -> Self {
+        Self::new()
     }
 }
 impl RandGenerator for DefaultRandGenerator {

@@ -119,13 +119,13 @@ impl GptClient {
         let mut builder = Self::client_builder();
         if let Some(proxy) = option.proxy {
             builder = builder
-                .proxy(&Url::from_str(&proxy).map_err(|e| {
+                .proxy(&Url::from_str(&proxy).map_err(|_e| {
                     GptClientError::new(
                         "invalid proxy url".to_string(),
                         GptClientErrorKind::InvalidUrl(proxy.clone()),
                     )
                 })?)
-                .map_err(|e| {
+                .map_err(|_e| {
                     GptClientError::new(
                         "invalid proxy url".to_string(),
                         GptClientErrorKind::InvalidUrl(proxy),
@@ -133,7 +133,7 @@ impl GptClient {
                 })?;
         }
         if let Some(ca) = option.ca_path {
-            builder = builder.add_ca(&ca).map_err(|e| {
+            builder = builder.add_ca(&ca).map_err(|_e| {
                 GptClientError::new(
                     "invalid ca".to_string(),
                     GptClientErrorKind::NotFoundCAFile(ca),
@@ -222,19 +222,6 @@ fn proxy_from_env() -> Option<String> {
                 },
             },
         },
-    }
-}
-#[derive(Debug)]
-struct ChatStream(String);
-impl ChatStream {
-    fn new() -> Self {
-        Self(String::new())
-    }
-    fn gen_response(&self) -> ChatResponse {
-        ChatResponse::DeltaContent(self.0.clone())
-    }
-    fn join_response(&mut self, message: &str) {
-        self.0.push_str(message);
     }
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
