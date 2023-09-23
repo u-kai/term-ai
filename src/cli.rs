@@ -2,8 +2,11 @@
 use crate::functions::speaker::MacSpeaker;
 use crate::{
     functions::{
-        code_capture::GptCodeCapture, code_reviewer::CodeReviewer, repl::ChatGptRepl,
-        translator::FileTranslator, GptFunction, GptFunctionContainer,
+        code_capture::GptCodeCapture,
+        code_reviewer::CodeReviewer,
+        repl::ChatGptRepl,
+        translator::{FileTranslator, Translator},
+        GptFunction, GptFunctionContainer,
     },
     gpt::{
         chat::ChatGpt,
@@ -103,6 +106,9 @@ impl Gpt {
             #[cfg(target_os = "macos")]
             result.add_functions(Box::new(MacSpeaker::default()));
         }
+        if self.english_teacher {
+            result.add_functions(Box::new(Translator::default()));
+        }
         result
     }
     pub fn run(&self) {
@@ -112,17 +118,6 @@ impl Gpt {
         } else {
             OpenAIModel::Gpt4
         };
-        if self.english_teacher {
-            gpt.chat(
-                model,
-                Message::new(
-                    Role::User,
-                    "これから私が記述する全ての英語を日本語でわかりやすく翻訳してください.",
-                ),
-                &mut |res| HandleResult::from(res),
-            )
-            .unwrap();
-        }
         let mut functions = self.gen_functions();
         if self.repl {
             let mut repl = ChatGptRepl::new_with_functions(gpt, functions);
