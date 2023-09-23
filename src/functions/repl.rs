@@ -53,7 +53,10 @@ impl ChatGptRepl {
     pub fn repl(&mut self, model: OpenAIModel) -> Result<(), Box<dyn std::error::Error + 'static>> {
         loop {
             self.user_first();
-            let message = Self::user_input();
+            let Ok(message) = Self::user_input() else {
+                println!("invalid input. please input again");
+                continue;
+            };
             if Self::is_exit(&message) {
                 return Ok(());
             }
@@ -89,10 +92,10 @@ impl ChatGptRepl {
         print!("{} > ", self.display_user);
         std::io::stdout().flush().unwrap();
     }
-    fn user_input() -> String {
+    fn user_input() -> std::io::Result<String> {
         let mut message = String::new();
-        std::io::stdin().read_line(&mut message).unwrap();
-        message
+        std::io::stdin().read_line(&mut message)?;
+        Ok(message)
     }
     fn is_clear(message: &str) -> bool {
         message == "clear\n"
