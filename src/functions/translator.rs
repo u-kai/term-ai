@@ -11,8 +11,7 @@ use super::{
 pub struct Translator {}
 
 impl Translator {
-    const TO_JAPANESE_PREFIX: &'static str =
-        "Please translate the following sentences into Japanese";
+    const TO_JAPANESE_PREFIX: &'static str = "以下の文章を日本語に翻訳してください。";
     const TO_ENGLISH_PREFIX: &'static str = "Please translate the following sentences into English";
     pub fn new() -> Self {
         Self {}
