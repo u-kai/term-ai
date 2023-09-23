@@ -5,7 +5,7 @@ use crate::{
         code_capture::GptCodeCapture,
         code_reviewer::CodeReviewer,
         repl::ChatGptRepl,
-        translator::{FileTranslator, Translator},
+        translator::{FileTranslator, TranslateMode, Translator},
         GptFunction, GptFunctionContainer,
     },
     gpt::{
@@ -25,6 +25,8 @@ pub struct Gpt {
     file_translator: bool,
     #[clap(short = 'e', long = "english-teacher")]
     english_teacher: bool,
+    #[clap(long = "translator")]
+    translator: Option<TranslateMode>,
     #[clap(short = 't', long = "translate")]
     translate: bool,
     #[clap(short = 'p', long = "repl")]
@@ -35,6 +37,17 @@ pub struct Gpt {
     #[clap(short = 's', long = "speaker")]
     speaker: bool,
     source: Option<String>,
+}
+impl FromStr for TranslateMode {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "en" => Ok(Self::ToEnglish),
+            "ko" => Ok(Self::ToKorean),
+            "ch" => Ok(Self::ToChinese),
+            _ => Err(format!("{} is not supported", s)),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -108,6 +121,9 @@ impl Gpt {
         }
         if self.english_teacher {
             result.add_functions(Box::new(Translator::default()));
+        }
+        if let Some(mode) = &self.translator {
+            result.add_functions(Box::new(Translator::new(mode.clone())));
         }
         result
     }

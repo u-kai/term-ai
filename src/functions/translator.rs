@@ -8,18 +8,28 @@ use super::{
 };
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct Translator {}
+pub struct Translator {
+    mode: TranslateMode,
+}
 
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum TranslateMode {
+    ToEnglish,
+    ToKorean,
+    ToChinese,
+}
 impl Translator {
     const TO_JAPANESE_PREFIX: &'static str = "以下の文章を日本語に翻訳してください。";
+    const TO_KOREAN_PREFIX: &'static str = "다음 문장을 한국어로 번역하십시오.";
+    const TO_CHINESE_PREFIX: &'static str = "请将以下句子翻译成中文。";
     const TO_ENGLISH_PREFIX: &'static str = "Please translate the following sentences into English";
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(mode: TranslateMode) -> Self {
+        Self { mode }
     }
 }
 impl Default for Translator {
     fn default() -> Self {
-        Self::new()
+        Self::new(TranslateMode::ToEnglish)
     }
 }
 impl GptFunction for Translator {
@@ -30,9 +40,17 @@ impl GptFunction for Translator {
             Lang::English(s) => {
                 *change = format!("{}\n{}", Self::TO_JAPANESE_PREFIX, s);
             }
-            Lang::Japanese(s) => {
-                *change = format!("{}\n{}", Self::TO_ENGLISH_PREFIX, s);
-            }
+            Lang::Japanese(s) => match self.mode {
+                TranslateMode::ToKorean => {
+                    *change = format!("{}\n{}", Self::TO_KOREAN_PREFIX, s);
+                }
+                TranslateMode::ToChinese => {
+                    *change = format!("{}\n{}", Self::TO_CHINESE_PREFIX, s);
+                }
+                TranslateMode::ToEnglish => {
+                    *change = format!("{}\n{}", Self::TO_ENGLISH_PREFIX, s);
+                }
+            },
         }
     }
 }
