@@ -8,6 +8,36 @@ use super::{
 };
 
 #[derive(Debug, PartialEq, Eq)]
+pub struct Translator {}
+
+impl Translator {
+    const TO_JAPANESE_PREFIX: &'static str =
+        "Please translate the following sentences into Japanese";
+    const TO_ENGLISH_PREFIX: &'static str = "Please translate the following sentences into English";
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+impl Default for Translator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+impl GptFunction for Translator {
+    fn change_request(&self, request: &mut crate::gpt::client::Message) {
+        let content = Lang::from(&request.content);
+        let change = request.change_content();
+        match content {
+            Lang::English(s) => {
+                *change = format!("{}\n{}", Self::TO_JAPANESE_PREFIX, s);
+            }
+            Lang::Japanese(s) => {
+                *change = format!("{}\n{}", Self::TO_ENGLISH_PREFIX, s);
+            }
+        }
+    }
+}
+#[derive(Debug, PartialEq, Eq)]
 pub struct FileTranslator {
     source_path: String,
     do_action: bool,
@@ -78,6 +108,22 @@ impl GptFunction for FileTranslator {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Clone)]
+enum Lang {
+    English(String),
+    Japanese(String),
+}
+
+impl<T: AsRef<str>> From<T> for Lang {
+    fn from(s: T) -> Self {
+        let is_english = s.as_ref().chars().all(|c| c.is_ascii());
+        if is_english {
+            Self::English(s.as_ref().to_string())
+        } else {
+            Self::Japanese(s.as_ref().to_string())
+        }
+    }
+}
 #[cfg(test)]
 mod tests {
     use crate::{
@@ -85,7 +131,44 @@ mod tests {
         gpt::client::{ChatResponse, HandleResult, Message, Role},
     };
 
-    use super::FileTranslator;
+    use super::*;
+    #[test]
+    fn messageを翻訳を促すmessageに変換する() {
+        let mut message = Message::new(Role::User, "hello");
+        let sut = Translator::default();
+        sut.change_request(&mut message);
+
+        assert_eq!(
+            message,
+            Message::new(
+                Role::User,
+                format!("{}\n{}", Translator::TO_JAPANESE_PREFIX, "hello")
+            )
+        );
+        let mut message = Message::new(Role::User, "helloは日本語でこんにちはです");
+        let sut = Translator::default();
+        sut.change_request(&mut message);
+
+        assert_eq!(
+            message,
+            Message::new(
+                Role::User,
+                format!(
+                    "{}\n{}",
+                    Translator::TO_ENGLISH_PREFIX,
+                    "helloは日本語でこんにちはです"
+                )
+            )
+        );
+    }
+    #[test]
+    fn 英語か日本語か判断可能() {
+        let en = "hello ";
+        assert_eq!(Lang::from(en), Lang::English(en.to_string()));
+
+        let jp = "helloは日本語でこんにちは";
+        assert_eq!(Lang::from(jp), Lang::Japanese(jp.to_string()));
+    }
 
     #[test]
     #[ignore]

@@ -94,14 +94,14 @@ impl Gpt {
             result.add_functions(Box::new(GptCodeCapture::new_with_file_writer(".")));
         };
         if self.code_reviewer {
-            result.add_functions(Box::new(CodeReviewer::new(".")));
+            result.add_functions(Box::new(CodeReviewer::default()));
         };
         if self.file_translator {
-            result.add_functions(Box::new(FileTranslator::new()));
+            result.add_functions(Box::new(FileTranslator::default()));
         };
         if self.speaker {
             #[cfg(target_os = "macos")]
-            result.add_functions(Box::new(MacSpeaker::new()));
+            result.add_functions(Box::new(MacSpeaker::default()));
         }
         result
     }

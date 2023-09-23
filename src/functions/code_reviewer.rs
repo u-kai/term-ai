@@ -44,7 +44,7 @@ mod tests {
         test_file.create_file_under_root("test.rs", file_content);
 
         let prefix = "以下のコードをレビューしてください";
-        let mut code_reviewer = CodeReviewer::new(prefix);
+        let code_reviewer = CodeReviewer::new(prefix);
         let mut message = Message::new(Role::User, "tmp/test.rs");
         code_reviewer.change_request(&mut message);
 
