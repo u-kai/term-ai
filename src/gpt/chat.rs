@@ -33,6 +33,9 @@ impl ChatGpt {
             f(res)
         })
     }
+    pub fn chat_history(&self) -> &[Message] {
+        self.manager.history.all()
+    }
     pub fn clear(&mut self) {
         self.manager.clear();
     }
@@ -52,8 +55,8 @@ impl ChatHistory {
     fn new() -> Self {
         Self { inner: Vec::new() }
     }
-    fn all(&self) -> Vec<Message> {
-        self.inner.clone()
+    fn all(&self) -> &[Message] {
+        &self.inner
     }
     fn clear(&mut self) {
         self.inner.clear();
@@ -99,7 +102,7 @@ impl ChatManager {
         }
     }
     pub fn make_request(&self, model: OpenAIModel) -> ChatRequest {
-        ChatRequest::new(model, self.history.all())
+        ChatRequest::new(model, self.history.all().clone().to_vec())
     }
     pub fn update_by_request(&mut self, message: Message) {
         self.history.push_request(message);

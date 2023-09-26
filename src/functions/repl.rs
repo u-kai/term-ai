@@ -82,6 +82,9 @@ impl ChatGptRepl {
             Self::gpt_finish();
         }
     }
+    pub fn history(&self) -> &[Message] {
+        self.chat_gpt.chat_history()
+    }
     pub fn set_user_name(&mut self, name: &str) {
         self.display_user = name.to_string();
     }

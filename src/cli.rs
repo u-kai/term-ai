@@ -10,7 +10,7 @@ use crate::{
     },
     gpt::{
         chat::ChatGpt,
-        client::{HandleResult, Message, OpenAIModel, Role},
+        client::{Message, OpenAIModel, Role},
     },
 };
 use clap::Parser;
@@ -137,7 +137,13 @@ impl Gpt {
         let mut functions = self.gen_functions();
         if self.repl {
             let mut repl = ChatGptRepl::new_with_functions(gpt, functions);
-            repl.repl(model).unwrap();
+            match repl.repl(model) {
+                Ok(_) => {}
+                Err(e) => {
+                    println!("{}", e.to_string());
+                    self.run();
+                }
+            }
         } else {
             let mut message = self
                 .make_message()

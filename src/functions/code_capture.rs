@@ -276,8 +276,8 @@ mod tests {
         }
         let root_dir = "tmp";
         let rand = 0;
-        let mut test_file = TestFileFactory::create(root_dir);
-        let mut file_writer = SampleFileWriter::new(root_dir, FakeRand { rand });
+        let test_file = TestFileFactory::create(root_dir);
+        let file_writer = SampleFileWriter::new(root_dir, FakeRand { rand });
 
         let mut function = GptCodeCapture::new(file_writer);
         let code = "fn main(){println!();}";
