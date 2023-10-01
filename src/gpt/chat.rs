@@ -19,11 +19,10 @@ impl ChatGpt {
             manager: ChatManager::new(),
         })
     }
-
     pub fn chat<F: FnMut(&ChatResponse) -> HandleResult>(
         &mut self,
         model: OpenAIModel,
-        message: Message,
+        message: &Message,
         f: &mut F,
     ) -> Result<()> {
         self.manager.update_by_request(message);
@@ -104,8 +103,8 @@ impl ChatManager {
     pub fn make_request(&self, model: OpenAIModel) -> ChatRequest {
         ChatRequest::new(model, self.history.all().clone().to_vec())
     }
-    pub fn update_by_request(&mut self, message: Message) {
-        self.history.push_request(message);
+    pub fn update_by_request(&mut self, message: &Message) {
+        self.history.push_request(message.clone());
     }
     pub fn update_by_response(&mut self, res: &ChatResponse) {
         if res.is_done() {
@@ -156,7 +155,7 @@ mod tests {
 
         sut.chat(
             OpenAIModel::Gpt3Dot5Turbo,
-            Message::new(Role::User, "こんにちは"),
+            &Message::new(Role::User, "こんにちは"),
             &mut |res| match res {
                 ChatResponse::DeltaContent(s) => {
                     buf.push_str(s);
@@ -179,7 +178,7 @@ mod tests {
         let gpt3 = OpenAIModel::Gpt3Dot5Turbo;
         let mut sut = ChatManager::new();
 
-        sut.update_by_request(Message::new(Role::User, "こんにちは"));
+        sut.update_by_request(&Message::new(Role::User, "こんにちは"));
 
         let req = sut.make_request(gpt3);
         assert_eq!(
@@ -191,7 +190,7 @@ mod tests {
         sut.update_by_response(&ChatResponse::DeltaContent(" world".to_string()));
         sut.update_by_response(&ChatResponse::Done);
 
-        sut.update_by_request(Message::new(Role::User, "僕ってかっこいいですか？"));
+        sut.update_by_request(&Message::new(Role::User, "僕ってかっこいいですか？"));
         let req = sut.make_request(gpt3);
         assert_eq!(
             req,
@@ -208,7 +207,7 @@ mod tests {
     #[test]
     fn chat_managerはsseレスポンスからhistoryを更新する() {
         let mut sut = ChatManager::new();
-        sut.update_by_request(Message::new(Role::User, "こんにちは"));
+        sut.update_by_request(&Message::new(Role::User, "こんにちは"));
         sut.update_by_response(&ChatResponse::DeltaContent("hello".to_string()));
         sut.update_by_response(&ChatResponse::DeltaContent(" world".to_string()));
         sut.update_by_response(&ChatResponse::Done);

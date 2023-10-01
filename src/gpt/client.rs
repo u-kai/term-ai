@@ -419,7 +419,7 @@ impl OpenAIModel {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct GptClientError {
     message: String,
-    kind: GptClientErrorKind,
+    pub kind: GptClientErrorKind,
 }
 impl GptClientError {
     pub fn new(message: String, kind: GptClientErrorKind) -> Self {
@@ -457,7 +457,6 @@ pub enum GptClientErrorKind {
     InvalidUrl(String),
     ParseError(String),
     NotFoundEnvAPIKey,
-    //NotFoundResponseContent,
     ProxyConnectionError(String),
     ReadStreamError(String),
     RequestError(String),
@@ -473,7 +472,6 @@ impl Display for GptClientErrorKind {
             Self::NotFoundEnvAPIKey => "Not found OPENAI_API_KEY in env".to_string(),
             Self::RequestError(s) => format!("Request Error to {}", s),
             Self::NotMakeChatBody(s) => format!("Not make chat body from {}", s),
-            //Self::NotFoundResponseContent => format!("Response Content is Not Found"),
             Self::ReadStreamError(s) => format!("Not Read Stream. Error is : {}", s),
             Self::ResponseDeserializeError(s) => {
                 format!("Not Deserialize response. Serde Error is :  {}", s)
@@ -496,7 +494,7 @@ mod tests {
 
     #[test]
     #[ignore = "実際にproxy通信するので、CIでのテストは行わない"]
-    fn proxyを利用したgptと実際の通信を行うことが可能() {
+    fn proxyを利用してgpt通信を行うことが可能() {
         std::env::set_var("HTTPS_PROXY", "http://localhost:8080");
         let mut client = GptClient::from_env().unwrap();
         let handler = GptSseHandler::new(MockHandler::new());
@@ -509,6 +507,7 @@ mod tests {
             &handler,
         );
 
+        std::env::remove_var("HTTPS_PROXY");
         assert!(result.as_ref().unwrap().len() > 0);
         assert!(handler.handler().called_time() > 0);
         for c in result.unwrap().chars() {

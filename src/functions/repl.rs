@@ -2,7 +2,7 @@ use std::io::Write;
 
 use crate::gpt::{
     chat::ChatGpt,
-    client::{Message, OpenAIModel, Role},
+    client::{GptClientError, GptClientErrorKind, Message, OpenAIModel, Role},
 };
 
 use super::{GptFunction, GptFunctionContainer};
@@ -67,19 +67,49 @@ impl ChatGptRepl {
             }
             let mut message = Message::new(Role::User, &message);
 
+            self.gpt_first();
+
             self.container.switch_do_action(&message);
             self.container.change_request(&mut message);
-
-            self.gpt_first();
-            self.chat_gpt.chat(model, message, &mut |res| {
-                Self::gpt_message(res.delta_content());
-                self.container.handle_stream(res)
-            })?;
-
+            self.chat_with_retry(model, &message)?;
             self.container.action_at_end()?;
-            // If above line process is heavy,I would like to proceed first below
-            // It may be necessary to have an input that can receive the results of parallel processing.
+
             Self::gpt_finish();
+        }
+    }
+
+    fn chat(&mut self, model: OpenAIModel, message: &Message) -> Result<(), GptClientError> {
+        self.chat_gpt.chat(model, &message, &mut |res| {
+            Self::gpt_message(res.delta_content());
+            self.container.handle_stream(res)
+        })
+    }
+    fn chat_with_retry(
+        &mut self,
+        model: OpenAIModel,
+        message: &Message,
+    ) -> Result<(), GptClientError> {
+        // chat is retry 3 times
+        self.chat(model, message)
+            .or_else(|e| self.maybe_retry(e, model, message))
+            .or_else(|e| self.maybe_retry(e, model, message))
+            .or_else(|e| self.maybe_retry(e, model, message))
+    }
+    fn maybe_retry(
+        &mut self,
+        e: GptClientError,
+        model: OpenAIModel,
+        message: &Message,
+    ) -> Result<(), GptClientError> {
+        match &e.kind {
+            GptClientErrorKind::ReadStreamError(_)
+            | GptClientErrorKind::ResponseError(_)
+            | GptClientErrorKind::RequestError(_) => {
+                // TODO gen new gpt logic
+                self.chat_gpt = ChatGpt::from_env().unwrap();
+                self.chat(model, message)
+            }
+            _ => return Err(e),
         }
     }
     pub fn history(&self) -> &[Message] {

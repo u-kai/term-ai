@@ -137,21 +137,14 @@ impl Gpt {
         let mut functions = self.gen_functions();
         if self.repl {
             let mut repl = ChatGptRepl::new_with_functions(gpt, functions);
-            match repl.repl(model) {
-                Ok(_) => {}
-                Err(e) => {
-                    println!("GPT ERROR : {}", e.to_string());
-                    println!("Re Run GPT REPL");
-                    self.run();
-                }
-            }
+            repl.repl(model).unwrap();
         } else {
             let mut message = self
                 .make_message()
                 .expect("gpt source is not found, so you want to use gpt, you must set argument");
             functions.switch_do_action(&message);
             functions.change_request(&mut message);
-            gpt.chat(model, message, &mut |res| {
+            gpt.chat(model, &message, &mut |res| {
                 print!("{}", res.delta_content());
                 std::io::stdout().flush().unwrap();
                 functions.handle_stream(res)
