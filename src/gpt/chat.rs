@@ -20,6 +20,7 @@ impl ChatGpt {
         })
     }
     pub fn re_connect(&mut self) -> Result<()> {
+        // TODO gen new client logic
         self.client = GptClient::from_env()?;
         Ok(())
     }

@@ -105,8 +105,7 @@ impl ChatGptRepl {
             GptClientErrorKind::ReadStreamError(_)
             | GptClientErrorKind::ResponseError(_)
             | GptClientErrorKind::RequestError(_) => {
-                // TODO gen new gpt logic
-                self.chat_gpt = ChatGpt::from_env().unwrap();
+                self.chat_gpt.re_connect()?;
                 self.chat(model, message)
             }
             _ => return Err(e),
