@@ -140,7 +140,8 @@ impl Gpt {
             match repl.repl(model) {
                 Ok(_) => {}
                 Err(e) => {
-                    println!("{}", e.to_string());
+                    println!("GPT ERROR : {}", e.to_string());
+                    println!("Re Run GPT REPL");
                     self.run();
                 }
             }
