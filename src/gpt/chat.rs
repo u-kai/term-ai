@@ -19,6 +19,10 @@ impl ChatGpt {
             manager: ChatManager::new(),
         })
     }
+    pub fn re_connect(&mut self) -> Result<()> {
+        self.client = GptClient::from_env()?;
+        Ok(())
+    }
     pub fn chat<F: FnMut(&ChatResponse) -> HandleResult>(
         &mut self,
         model: OpenAIModel,
@@ -147,6 +151,42 @@ impl DeltaContentStore {
 mod tests {
 
     use super::*;
+    #[test]
+    #[ignore = "gpt3のapiを叩くので、テストはスキップ"]
+    fn historyを引き継いでgptと再度接続する() {
+        let mut sut = ChatGpt::from_env().unwrap();
+        let mut buf = String::new();
+
+        sut.chat(
+            OpenAIModel::Gpt3Dot5Turbo,
+            &Message::new(Role::User, "僕の名前はかいかいです．覚えてね"),
+            &mut |res| match res {
+                ChatResponse::DeltaContent(s) => {
+                    buf.push_str(s);
+                    HandleResult::Progress
+                }
+                ChatResponse::Done => HandleResult::Done,
+            },
+        )
+        .unwrap();
+        println!("{}", buf);
+        buf.clear();
+        sut.re_connect().unwrap();
+        sut.chat(
+            OpenAIModel::Gpt3Dot5Turbo,
+            &Message::new(Role::User, "僕の名前を覚えていますか？"),
+            &mut |res| match res {
+                ChatResponse::DeltaContent(s) => {
+                    buf.push_str(s);
+                    HandleResult::Progress
+                }
+                ChatResponse::Done => HandleResult::Done,
+            },
+        )
+        .unwrap();
+        println!("{}", buf);
+        assert!(buf.contains("かいかい"));
+    }
     #[test]
     #[ignore = "gpt3のapiを叩くので、テストはスキップ"]
     fn gptとchatが可能() {
