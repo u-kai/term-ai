@@ -160,9 +160,15 @@ impl GptClient {
         mut f: F,
     ) -> Result<()> {
         self.send_before(request);
+        // TODO
+        // After a certain amount of time has passed since connecting to GPT, response is not returned.
+        // So, the closure inside the request_mut_fn is not executed, and a flag is used to notify the did not response from GPT.
+        // did_response is PATCH for this problem.
+        let mut did_response = false;
         self.sse_client
             .send_mut_fn(|sse_response| {
                 let res = ChatResponse::from_sse(sse_response);
+                did_response = true;
                 match res {
                     Ok(res) => {
                         let result = f(&res);
@@ -171,7 +177,17 @@ impl GptClient {
                     Err(e) => HandleProgress::Err(e),
                 }
             })
-            .map_err(GptClientError::from)
+            .map_err(GptClientError::from)?;
+
+        // TODO
+        if !did_response {
+            Err(GptClientError::new(
+                "did not response from GPT".to_string(),
+                GptClientErrorKind::NoResponse,
+            ))
+        } else {
+            Ok(())
+        }
     }
     pub fn request_mut<R, T: StreamChatMutHandler<R>>(
         &mut self,
@@ -453,6 +469,7 @@ impl Display for GptClientError {
 }
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum GptClientErrorKind {
+    NoResponse,
     NotFoundCAFile(String),
     InvalidUrl(String),
     ParseError(String),
@@ -467,6 +484,7 @@ pub enum GptClientErrorKind {
 impl Display for GptClientErrorKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let kind = match self {
+            Self::NoResponse => "GPT did not return a response".to_string(),
             Self::ProxyConnectionError(s) => format!("Proxy Connection Error. Error is : {}", s),
             Self::NotFoundCAFile(s) => format!("Not found CA File. File is : {}", s),
             Self::NotFoundEnvAPIKey => "Not found OPENAI_API_KEY in env".to_string(),

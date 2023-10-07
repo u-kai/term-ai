@@ -103,12 +103,15 @@ impl ChatGptRepl {
     ) -> Result<(), GptClientError> {
         match &e.kind {
             GptClientErrorKind::ReadStreamError(_)
+            | GptClientErrorKind::NoResponse
             | GptClientErrorKind::ResponseError(_)
             | GptClientErrorKind::RequestError(_) => {
                 self.chat_gpt.re_connect()?;
                 self.chat(model, message)
             }
-            _ => return Err(e),
+            _ => {
+                return Err(e);
+            }
         }
     }
     pub fn history(&self) -> &[Message] {
