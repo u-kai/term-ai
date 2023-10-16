@@ -72,8 +72,8 @@ mod tests {
     #[test]
     #[allow(non_snake_case)]
     fn cliのoptionからGptFunctionContainerを生成できる() {
-        let termai = Gpt::parse_from(&["gpt", "-c", "-r", "-f", "-t", "-v", "4"]);
-        let container = termai.gen_functions();
+        let _termai = Gpt::parse_from(&["gpt", "-c", "-r", "-f", "-t", "-v", "4"]);
+        let _container = _termai.gen_functions();
     }
     #[test]
     fn cliはcode_capture機能を利用するか選択できる() {}
