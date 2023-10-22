@@ -16,36 +16,25 @@ use crate::{
 use clap::Parser;
 use std::{io::Write, str::FromStr};
 #[derive(Parser)]
-#[command(about)]
 pub struct Gpt {
-    /// If gpt response contain code, then sample_xxx file is created with captured code.
-    #[arg(short = 'c', long = "code-capture")]
+    #[clap(short = 'c', long = "code-capture")]
     code_capture: bool,
-    /// If you specify code file path, then you review your code with gpt.
-    #[arg(short = 'r', long = "code-reviewer")]
+    #[clap(short = 'r', long = "code-reviewer", ]
     code_reviewer: bool,
-    /// If you specify file path, then you translate your file with gpt and append translate result to source file.
-    #[arg(short = 'f', long = "file-translator")]
+    #[clap(short = 'f', long = "file-translator")]
     file_translator: bool,
-    /// If you specify language, then gpt translate your message.
-    ///
-    /// Support language is jp, en, ko, ch.
-    ///
-    /// NOTE: This option must be used with repl option.
-    #[arg(long = "translator", default_value = "en", short = 't')]
-    translator: TranslateMode,
-
-    /// You can chat with gpt and used with other option.
-    #[arg(short = 'p', long = "repl")]
+    #[clap(short = 'e', long = "english-teacher")]
+    english_teacher: bool,
+    #[clap(long = "translator")]
+    translator: Option<TranslateMode>,
+    #[clap(short = 't', long = "translate")]
+    translate: bool,
+    #[clap(short = 'p', long = "repl")]
     repl: bool,
-    /// You can choice gpt3 or gpt4.
-    #[arg(short = 'v', long = "gpt", default_value = "gpt3")]
+    #[clap(short = 'v', long = "gpt", default_value = "gpt3")]
     gpt: GptVersion,
-
-    /// If you specify speaker, then gpt message will read by your pc.
-    /// NOTE: This is only supported on macos.
     #[cfg(target_os = "macos")]
-    #[arg(short = 's', long = "speaker")]
+    #[clap(short = 's', long = "speaker")]
     speaker: bool,
     source: Option<String>,
 }
@@ -130,9 +119,12 @@ impl Gpt {
             #[cfg(target_os = "macos")]
             result.add_functions(Box::new(MacSpeaker::default()));
         }
-        //if let Some(mode) = &self.translator {
-        result.add_functions(Box::new(Translator::new(self.translator.clone())));
-        //}
+        if self.english_teacher {
+            result.add_functions(Box::new(Translator::default()));
+        }
+        if let Some(mode) = &self.translator {
+            result.add_functions(Box::new(Translator::new(mode.clone())));
+        }
         result
     }
     pub fn run(&self) {
@@ -162,23 +154,19 @@ impl Gpt {
         }
     }
     fn make_message(&self) -> Result<Message, String> {
-        Ok(Message::new(
-            Role::User,
-            self.source.as_ref().unwrap_or(&String::new()),
-        ))
-        //        if self.translate {
-        //            Ok(Message::new(
-        //                Role::User,
-        //                format!(
-        //                    "以下を日本語に翻訳してください\n {}",
-        //                    self.source.as_ref().unwrap_or(&String::new())
-        //                ),
-        //            ))
-        //        } else {
-        //            Ok(Message::new(
-        //                Role::User,
-        //                self.source.as_ref().unwrap_or(&String::new()),
-        //            ))
-        //        }
+        if self.translate {
+            Ok(Message::new(
+                Role::User,
+                format!(
+                    "以下を日本語に翻訳してください\n {}",
+                    self.source.as_ref().unwrap_or(&String::new())
+                ),
+            ))
+        } else {
+            Ok(Message::new(
+                Role::User,
+                self.source.as_ref().unwrap_or(&String::new()),
+            ))
+        }
     }
 }

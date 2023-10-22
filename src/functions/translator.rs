@@ -14,6 +14,7 @@ pub struct Translator {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum TranslateMode {
+    ToJapanese,
     ToEnglish,
     ToKorean,
     ToChinese,
@@ -50,6 +51,7 @@ impl GptFunction for Translator {
                 TranslateMode::ToEnglish => {
                     *change = format!("{}\n{}", Self::TO_ENGLISH_PREFIX, s);
                 }
+                _ => {}
             },
         }
     }
