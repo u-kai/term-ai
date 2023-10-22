@@ -150,7 +150,7 @@ mod tests {
 
     use super::*;
     #[test]
-    fn messageを翻訳を促すmessageに変換する() {
+    fn 翻訳を促すmessageに変換する() {
         let mut message = Message::new(Role::User, "hello");
         let sut = Translator::default();
         sut.change_request(&mut message);
