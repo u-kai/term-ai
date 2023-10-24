@@ -58,9 +58,8 @@ $ termai cc "Please write calculate fibonacci sequence program by python"
 
 OK! so code is below.
 
-\`\`\`python
+python
 ...
-\`\`\`
 
 ```
 
