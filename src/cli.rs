@@ -14,7 +14,7 @@ use crate::{
     },
 };
 use clap::{Parser, Subcommand};
-use std::{fs::read_to_string, io::Write, str::FromStr};
+use std::{io::Write, str::FromStr};
 
 #[derive(Parser)]
 pub struct TermAI {
@@ -41,25 +41,29 @@ enum SubCommands {
         gpt_version: GptVersion,
         source: String,
     },
+    #[clap(name = "tjp")]
     TranslatorJp {
         #[clap(short = 'v', long = "gpt-version", default_value = "gpt3")]
         gpt_version: GptVersion,
         #[clap(short = 'f', long = "file-source")]
         file_path: Option<String>,
-        source: String,
+        source: Option<String>,
     },
+    #[clap(name = "ten")]
     TranslatorEn {
         #[clap(short = 'v', long = "gpt-version", default_value = "gpt3")]
         gpt_version: GptVersion,
         #[clap(short = 'f', long = "file-source")]
         file_path: Option<String>,
-        source: String,
+        source: Option<String>,
     },
+    #[clap(name = "cc")]
     CodeCapture {
         #[clap(short = 'v', long = "gpt-version", default_value = "gpt3")]
         gpt_version: GptVersion,
         source: String,
     },
+    #[clap(name = "cr")]
     CodeReviewer {
         #[clap(short = 'v', long = "gpt-version", default_value = "gpt3")]
         gpt_version: GptVersion,
@@ -156,17 +160,32 @@ impl TermAI {
                 } else {
                     OpenAIModel::Gpt4
                 };
-                let mut function = Translator::new(TranslateMode::ToJapanese);
-                let mut message = Message::new(Role::User, source);
-                function.switch_do_action(&message);
-                function.change_request(&mut message);
-                gpt.chat(model, &message, &mut |res| {
-                    print!("{}", res.delta_content());
-                    std::io::stdout().flush().unwrap();
-                    function.handle_stream(res)
-                })
-                .unwrap();
-                function.action_at_end().unwrap();
+                if let Some(file_path) = file_path.as_ref() {
+                    let mut function = FileTranslator::default();
+                    let mut message = Message::new(Role::User, file_path);
+                    function.switch_do_action(&message);
+                    function.change_request(&mut message);
+                    gpt.chat(model, &message, &mut |res| {
+                        print!("{}", res.delta_content());
+                        std::io::stdout().flush().unwrap();
+                        function.handle_stream(res)
+                    })
+                    .unwrap();
+                    function.action_at_end().unwrap();
+                } else {
+                    let mut function = Translator::new(TranslateMode::ToJapanese);
+                    let mut message =
+                        Message::new(Role::User, source.as_ref().expect("source is required"));
+                    function.switch_do_action(&message);
+                    function.change_request(&mut message);
+                    gpt.chat(model, &message, &mut |res| {
+                        print!("{}", res.delta_content());
+                        std::io::stdout().flush().unwrap();
+                        function.handle_stream(res)
+                    })
+                    .unwrap();
+                    function.action_at_end().unwrap();
+                };
             }
             SubCommands::TranslatorEn {
                 gpt_version,
@@ -179,22 +198,33 @@ impl TermAI {
                 } else {
                     OpenAIModel::Gpt4
                 };
-                let mut function = Translator::new(TranslateMode::ToEnglish);
-                let source = if let Some(file_path) = file_path.as_ref() {
-                    read_to_string(file_path.as_str()).unwrap()
+
+                if let Some(file_path) = file_path.as_ref() {
+                    let mut function = FileTranslator::default();
+                    let mut message = Message::new(Role::User, file_path);
+                    function.switch_do_action(&message);
+                    function.change_request(&mut message);
+                    gpt.chat(model, &message, &mut |res| {
+                        print!("{}", res.delta_content());
+                        std::io::stdout().flush().unwrap();
+                        function.handle_stream(res)
+                    })
+                    .unwrap();
+                    function.action_at_end().unwrap();
                 } else {
-                    source.clone()
+                    let mut function = Translator::new(TranslateMode::ToEnglish);
+                    let mut message =
+                        Message::new(Role::User, source.as_ref().expect("source is required"));
+                    function.switch_do_action(&message);
+                    function.change_request(&mut message);
+                    gpt.chat(model, &message, &mut |res| {
+                        print!("{}", res.delta_content());
+                        std::io::stdout().flush().unwrap();
+                        function.handle_stream(res)
+                    })
+                    .unwrap();
+                    function.action_at_end().unwrap();
                 };
-                let mut message = Message::new(Role::User, source);
-                function.switch_do_action(&message);
-                function.change_request(&mut message);
-                gpt.chat(model, &message, &mut |res| {
-                    print!("{}", res.delta_content());
-                    std::io::stdout().flush().unwrap();
-                    function.handle_stream(res)
-                })
-                .unwrap();
-                function.action_at_end().unwrap();
             }
             SubCommands::CodeReviewer {
                 gpt_version,
