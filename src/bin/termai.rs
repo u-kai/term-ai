@@ -1,4 +1,4 @@
-use gpt::cli::TermAI;
+use termai::cli::TermAI;
 
 fn main() {
     let gpt = TermAI::new();

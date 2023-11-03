@@ -6,7 +6,7 @@ use crate::{
         code_reviewer::CodeReviewer,
         repl::ChatGptRepl,
         translator::{FileTranslator, TranslateMode, Translator},
-        GptFunction, GptFunctionContainer,
+        GptFunction,
     },
     gpt::{
         chat::ChatGpt,
