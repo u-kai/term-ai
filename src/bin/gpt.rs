@@ -1,6 +1,6 @@
-use gpt::cli::Gpt;
+use gpt::cli::TermAI;
 
 fn main() {
-    let gpt = Gpt::new();
+    let gpt = TermAI::new();
     gpt.run();
 }
