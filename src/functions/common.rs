@@ -21,6 +21,12 @@ pub fn change_request_to_file_content(
     };
     Ok(())
 }
+pub fn get_file_content(path: &str) -> Result<String, std::io::Error> {
+    let mut file = File::open(path)?;
+    let mut content = String::new();
+    file.read_to_string(&mut content)?;
+    Ok(content)
+}
 
 #[cfg(test)]
 

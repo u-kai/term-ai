@@ -1,9 +1,9 @@
 use std::io::Write;
 
-use crate::gpt::client::HandleResult;
+use crate::gpt::client::{HandleResult, Message, Role};
 
 use super::{
-    common::{change_request_to_file_content, is_file_path},
+    common::{change_request_to_file_content, get_file_content, is_file_path},
     GptFunction,
 };
 
@@ -91,6 +91,34 @@ impl FileTranslator {
     }
 }
 impl GptFunction for FileTranslator {
+    fn setup_for_action(&mut self, input: &super::UserInput) {
+        if is_file_path(input.content()) {
+            self.do_action = true;
+            self.source_path = input.content().trim().to_string();
+        }
+    }
+    fn can_action(&self) -> bool {
+        self.do_action
+    }
+    fn input_to_messages(&self, input: super::UserInput) -> Vec<Message> {
+        if self.can_action() {
+            // can_action() == true
+            // self.source_path is not empty and is file path
+            // so we can get file content safely
+            let content = get_file_content(&self.source_path).unwrap();
+            Message::new(Role::User, content)
+                .split_by_dot_to_stay_gpt_limit()
+                .into_iter()
+                .map(|mut message| {
+                    let content = message.change_content();
+                    *content = format!("{}\n{}", Self::PREFIX, content);
+                    message
+                })
+                .collect()
+        } else {
+            GptFunction::input_to_messages(self, input)
+        }
+    }
     fn switch_do_action(&mut self, request: &crate::gpt::client::Message) {
         if is_file_path(&request.content) {
             self.do_action = true;
@@ -146,7 +174,7 @@ impl<T: AsRef<str>> From<T> for Lang {
 #[cfg(test)]
 mod tests {
     use crate::{
-        functions::{common::test_tool::TestFileFactory, GptFunction},
+        functions::{common::test_tool::TestFileFactory, GptFunction, UserInput},
         gpt::client::{ChatResponse, HandleResult, Message, Role},
     };
 
@@ -196,15 +224,15 @@ mod tests {
         test_file.create_root();
         test_file.create_file_under_root("test.rs", "hello");
 
-        let message = Message::new(Role::User, "tmp/test.rs");
+        let input = UserInput::new("tmp/test.rs");
 
         let mut sut = FileTranslator::new();
 
-        sut.switch_do_action(&message);
+        sut.setup_for_action(&input);
 
         test_file.remove_dir_all();
 
-        assert_eq!(sut.do_action(), true);
+        assert_eq!(sut.can_action(), true);
     }
     #[test]
     #[ignore]

@@ -162,7 +162,17 @@ impl TermAI {
                 };
                 if let Some(file_path) = file_path.as_ref() {
                     let mut function = FileTranslator::default();
-                    //let mut input = UserInput::new(file_path);
+                    let input = UserInput::new(file_path);
+                    function.setup_for_action(&input);
+                    let messages = function.input_to_messages(input);
+                    for message in messages {
+                        gpt.chat(model, &message, &mut |res| {
+                            print!("{}", res.delta_content());
+                            std::io::stdout().flush().unwrap();
+                            function.handle_stream(res)
+                        })
+                        .unwrap();
+                    }
                     //function.switch_do_action(&message);
                     //function.change_request(&mut message);
                     //gpt.chat(model, &message, &mut |res| {
@@ -171,7 +181,7 @@ impl TermAI {
                     //    function.handle_stream(res)
                     //})
                     //.unwrap();
-                    //function.action_at_end().unwrap();
+                    function.action_at_end().unwrap();
                 } else {
                     let mut function = Translator::new(TranslateMode::ToJapanese);
                     let mut message =

@@ -32,6 +32,7 @@ impl Default for GptDefaultFunction {
         Self::new()
     }
 }
+
 impl GptFunction for GptFunctionContainer {
     // TODO Migration
     fn switch_do_action(&mut self, request: &Message) {
@@ -45,6 +46,24 @@ impl GptFunction for GptFunctionContainer {
         });
     }
     //
+    //
+    fn setup_for_action(&mut self, input: &UserInput) {
+        self.functions
+            .iter_mut()
+            .for_each(|f| f.setup_for_action(input));
+    }
+    // only one function can action input to message
+    fn input_to_messages(&self, input: UserInput) -> Vec<Message> {
+        self.functions
+            .iter()
+            .filter(|f| f.can_action())
+            .next()
+            .as_ref()
+            // This struct is must contain default function
+            // so unwrap is safe
+            .unwrap()
+            .input_to_messages(input)
+    }
     fn handle_stream(&mut self, response: &ChatResponse) -> HandleResult {
         self.functions
             .iter_mut()
@@ -116,6 +135,9 @@ impl UserInput {
     pub fn new(input: impl Into<String>) -> Self {
         Self(input.into())
     }
+    pub fn content(&self) -> &str {
+        &self.0
+    }
 }
 
 pub trait GptFunction {
@@ -128,7 +150,7 @@ pub trait GptFunction {
         Message::new(Role::User, input).split_by_dot_to_stay_gpt_limit()
     }
     fn setup_for_action(&mut self, _input: &UserInput) {}
-    fn do_action(&self) -> bool {
+    fn can_action(&self) -> bool {
         false
     }
     fn handle_stream(&mut self, response: &ChatResponse) -> HandleResult {
