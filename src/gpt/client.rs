@@ -339,6 +339,9 @@ impl Display for OpenAIKey {
     }
 }
 
+#[cfg(not(test))]
+const GPT_REQUEST_LIMIT: usize = 4096;
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct ChatRequest {
     model: OpenAIModel,
@@ -346,6 +349,35 @@ pub struct ChatRequest {
     stream: bool,
 }
 impl ChatRequest {
+    pub fn from_message(model: OpenAIModel, message: Message) -> Self {
+        let messages = Self::split_by_dot(message);
+        Self {
+            model,
+            messages,
+            stream: true,
+        }
+    }
+    fn split_by_dot(message: Message) -> Vec<Message> {
+        if message.content.len() <= GPT_REQUEST_LIMIT {
+            return vec![message];
+        }
+        let role = message.role;
+        message.content.split_inclusive('.').fold(
+            vec![Message::new(role, "")],
+            |mut acc, sentence| {
+                if acc.last().as_ref().unwrap().content.len() + sentence.len() >= GPT_REQUEST_LIMIT
+                {
+                    acc.push(Message::new(role, sentence));
+                    return acc;
+                };
+                acc.last_mut().unwrap().content.push_str(sentence);
+                acc
+            },
+        )
+    }
+    pub fn get_message(&self, index: usize) -> Option<&Message> {
+        self.messages.get(index)
+    }
     pub fn new(model: OpenAIModel, messages: Vec<Message>) -> Self {
         Self {
             model,
@@ -501,6 +533,8 @@ impl Display for GptClientErrorKind {
         write!(f, "{}", kind)
     }
 }
+#[cfg(test)]
+const GPT_REQUEST_LIMIT: usize = 15;
 impl std::error::Error for GptClientError {}
 pub type Result<T> = std::result::Result<T, GptClientError>;
 #[cfg(test)]
@@ -510,6 +544,15 @@ mod tests {
     use super::fakes::*;
     use super::*;
 
+    #[test]
+    fn chat_request構造体はgptのメッセージ制限を超えないようにメッセージを分割して内部に保持する() {
+        let req = ChatRequest::from_message(
+            OpenAIModel::Gpt3Dot5Turbo,
+            Message::new(Role::User, "hello world.I like sushi".to_string()),
+        );
+        assert_eq!(req.get_message(0).unwrap().content, "hello world.");
+        assert_eq!(req.get_message(1).unwrap().content, "I like sushi");
+    }
     #[test]
     #[ignore = "実際にproxy通信するので、CIでのテストは行わない"]
     fn proxyを利用してgpt通信を行うことが可能() {

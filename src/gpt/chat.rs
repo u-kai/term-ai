@@ -106,7 +106,7 @@ impl ChatManager {
         }
     }
     pub fn make_request(&self, model: OpenAIModel) -> ChatRequest {
-        ChatRequest::new(model, self.history.all().clone().to_vec())
+        ChatRequest::new(model, self.history.all().to_vec())
     }
     pub fn update_by_request(&mut self, message: &Message) {
         self.history.push_request(message.clone());
