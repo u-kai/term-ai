@@ -6,7 +6,7 @@ use crate::{
         code_reviewer::CodeReviewer,
         repl::ChatGptRepl,
         translator::{FileTranslator, TranslateMode, Translator},
-        GptFunction,
+        GptFunction, UserInput,
     },
     gpt::{
         chat::ChatGpt,
@@ -162,16 +162,16 @@ impl TermAI {
                 };
                 if let Some(file_path) = file_path.as_ref() {
                     let mut function = FileTranslator::default();
-                    let mut message = Message::new(Role::User, file_path);
-                    function.switch_do_action(&message);
-                    function.change_request(&mut message);
-                    gpt.chat(model, &message, &mut |res| {
-                        print!("{}", res.delta_content());
-                        std::io::stdout().flush().unwrap();
-                        function.handle_stream(res)
-                    })
-                    .unwrap();
-                    function.action_at_end().unwrap();
+                    //let mut input = UserInput::new(file_path);
+                    //function.switch_do_action(&message);
+                    //function.change_request(&mut message);
+                    //gpt.chat(model, &message, &mut |res| {
+                    //    print!("{}", res.delta_content());
+                    //    std::io::stdout().flush().unwrap();
+                    //    function.handle_stream(res)
+                    //})
+                    //.unwrap();
+                    //function.action_at_end().unwrap();
                 } else {
                     let mut function = Translator::new(TranslateMode::ToJapanese);
                     let mut message =

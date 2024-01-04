@@ -1,4 +1,4 @@
-use crate::gpt::client::{ChatResponse, HandleResult, Message};
+use crate::gpt::client::{ChatResponse, HandleResult, Message, Role};
 
 pub mod code_capture;
 pub mod code_reviewer;
@@ -33,6 +33,7 @@ impl Default for GptDefaultFunction {
     }
 }
 impl GptFunction for GptFunctionContainer {
+    // TODO Migration
     fn switch_do_action(&mut self, request: &Message) {
         self.functions
             .iter_mut()
@@ -43,6 +44,7 @@ impl GptFunction for GptFunctionContainer {
             f.change_request(request);
         });
     }
+    //
     fn handle_stream(&mut self, response: &ChatResponse) -> HandleResult {
         self.functions
             .iter_mut()
@@ -108,9 +110,27 @@ impl GptDefaultFunction {
 }
 impl GptFunction for GptDefaultFunction {}
 
+#[derive(Debug, Clone)]
+pub struct UserInput(String);
+impl UserInput {
+    pub fn new(input: impl Into<String>) -> Self {
+        Self(input.into())
+    }
+}
+
 pub trait GptFunction {
+    // TODO Migration
     fn switch_do_action(&mut self, _request: &Message) {}
     fn change_request(&self, _request: &mut Message) {}
+    //
+    fn input_to_messages(&self, input: UserInput) -> Vec<Message> {
+        let UserInput(input) = input;
+        Message::new(Role::User, input).split_by_dot_to_stay_gpt_limit()
+    }
+    fn setup_for_action(&mut self, _input: &UserInput) {}
+    fn do_action(&self) -> bool {
+        false
+    }
     fn handle_stream(&mut self, response: &ChatResponse) -> HandleResult {
         HandleResult::from(response)
     }

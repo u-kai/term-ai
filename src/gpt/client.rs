@@ -350,30 +350,12 @@ pub struct ChatRequest {
 }
 impl ChatRequest {
     pub fn from_message(model: OpenAIModel, message: Message) -> Self {
-        let messages = Self::split_by_dot(message);
+        let messages = message.split_by_dot_to_stay_gpt_limit();
         Self {
             model,
             messages,
             stream: true,
         }
-    }
-    fn split_by_dot(message: Message) -> Vec<Message> {
-        if message.content.len() <= GPT_REQUEST_LIMIT {
-            return vec![message];
-        }
-        let role = message.role;
-        message.content.split_inclusive('.').fold(
-            vec![Message::new(role, "")],
-            |mut acc, sentence| {
-                if acc.last().as_ref().unwrap().content.len() + sentence.len() >= GPT_REQUEST_LIMIT
-                {
-                    acc.push(Message::new(role, sentence));
-                    return acc;
-                };
-                acc.last_mut().unwrap().content.push_str(sentence);
-                acc
-            },
-        )
     }
     pub fn get_message(&self, index: usize) -> Option<&Message> {
         self.messages.get(index)
@@ -393,6 +375,23 @@ pub struct Message {
     pub(crate) content: String,
 }
 impl Message {
+    pub fn split_by_dot_to_stay_gpt_limit(self) -> Vec<Self> {
+        if self.content.len() <= GPT_REQUEST_LIMIT {
+            return vec![self];
+        }
+        let role = self.role;
+        self.content
+            .split_inclusive('.')
+            .fold(vec![Message::new(role, "")], |mut acc, sentence| {
+                if acc.last().as_ref().unwrap().content.len() + sentence.len() >= GPT_REQUEST_LIMIT
+                {
+                    acc.push(Message::new(role, sentence));
+                    return acc;
+                };
+                acc.last_mut().unwrap().content.push_str(sentence);
+                acc
+            })
+    }
     pub fn new(role: Role, content: impl Into<String>) -> Self {
         Self {
             role,
