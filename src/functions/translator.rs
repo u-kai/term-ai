@@ -216,6 +216,62 @@ mod tests {
         let jp = "helloは日本語でこんにちは";
         assert_eq!(Lang::from(jp), Lang::Japanese(jp.to_string()));
     }
+    #[test]
+    #[ignore]
+    fn inputがファイルのパスであればmessageをfileのコンテンツに翻訳の依頼を付与したものに変更する_文字数によっては分割を行う(
+    ) {
+        let test_file = TestFileFactory::create("tmp");
+        test_file.create_root();
+        // test GptLimit is 10(written in src/gpt/client.rs)
+        test_file.create_file_under_root("test.rs", "hello world.good bye.i love you.");
+
+        let input = UserInput::new("tmp/test.rs");
+
+        let mut sut = FileTranslator::new();
+
+        sut.setup_for_action(&input);
+        let messages = sut.input_to_messages(input);
+
+        test_file.remove_dir_all();
+
+        assert_eq!(sut.can_action(), true);
+        assert_eq!(messages.len(), 3);
+        assert_eq!(
+            messages[0].content,
+            format!("{}\n{}", FileTranslator::PREFIX, "hello world.")
+        );
+        assert_eq!(
+            messages[1].content,
+            format!("{}\n{}", FileTranslator::PREFIX, "good bye.")
+        );
+        assert_eq!(
+            messages[2].content,
+            format!("{}\n{}", FileTranslator::PREFIX, "i love you.")
+        );
+    }
+    #[test]
+    #[ignore]
+    fn inputがファイルのパスであればmessageをfileのコンテンツに翻訳の依頼を付与したものに変更する()
+    {
+        let test_file = TestFileFactory::create("tmp");
+        test_file.create_root();
+        test_file.create_file_under_root("test.rs", "hello");
+
+        let input = UserInput::new("tmp/test.rs");
+
+        let mut sut = FileTranslator::new();
+
+        sut.setup_for_action(&input);
+        let messages = sut.input_to_messages(input);
+
+        test_file.remove_dir_all();
+
+        assert_eq!(sut.can_action(), true);
+        assert_eq!(
+            messages[0].content,
+            format!("{}\n{}", FileTranslator::PREFIX, "hello")
+        );
+    }
 
     #[test]
     #[ignore]
