@@ -154,6 +154,10 @@ impl GptClient {
             },
         )
     }
+    pub fn re_connect(&mut self) -> Result<()> {
+        *self = Self::from_env()?;
+        Ok(())
+    }
     pub fn request_mut_fn<F: FnMut(&ChatResponse) -> HandleResult>(
         &mut self,
         request: ChatRequest,
@@ -339,9 +343,6 @@ impl Display for OpenAIKey {
     }
 }
 
-#[cfg(not(test))]
-const GPT_REQUEST_LIMIT: usize = 4096;
-
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct ChatRequest {
     model: OpenAIModel,
@@ -369,6 +370,9 @@ impl ChatRequest {
     }
 }
 
+// This value is not official.
+#[cfg(not(test))]
+const GPT_REQUEST_LIMIT: usize = 4096;
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct Message {
     role: Role,

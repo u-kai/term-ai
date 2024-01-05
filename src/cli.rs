@@ -10,11 +10,11 @@ use crate::{
     },
     gpt::{
         chat::ChatGpt,
-        client::{Message, OpenAIModel, Role},
+        client::{ChatRequest, GptClient, Message, OpenAIModel, Role},
     },
 };
 use clap::{Parser, Subcommand};
-use std::{io::Write, str::FromStr};
+use std::{io::Write, str::FromStr, thread::sleep, time::Duration};
 
 #[derive(Parser)]
 pub struct TermAI {
@@ -69,6 +69,49 @@ enum SubCommands {
         gpt_version: GptVersion,
         file_path: String,
     },
+}
+
+fn display_result_and_handle_stream(
+    client: &mut GptClient,
+    f: &mut impl GptFunction,
+    req: ChatRequest,
+) -> crate::gpt::client::Result<()> {
+    client.request_mut_fn(req, |res| {
+        print!("{}", res.delta_content());
+        std::io::stdout().flush().unwrap();
+        f.handle_stream(res)
+    })
+}
+fn retry_request(
+    client: &mut GptClient,
+    req: ChatRequest,
+    f: &mut impl GptFunction,
+) -> crate::gpt::client::Result<()> {
+    client.re_connect()?;
+    sleep(Duration::from_secs(1));
+    display_result_and_handle_stream(client, f, req.clone())
+}
+
+fn exec_with_function(
+    client: &mut GptClient,
+    model: OpenAIModel,
+    input: UserInput,
+    f: &mut impl GptFunction,
+) {
+    f.setup_for_action(&input);
+    let messages = f.input_to_messages(input);
+    messages.into_iter().for_each(|message| {
+        let req = ChatRequest::from_message(model, message);
+        display_result_and_handle_stream(client, f, req.clone())
+            .or_else(|_e| retry_request(client, req.clone(), f))
+            .or_else(|_e| retry_request(client, req.clone(), f))
+            .or_else(|e| {
+                f.action_at_end().unwrap();
+                Err(e)
+            })
+            .unwrap();
+    });
+    f.action_at_end().unwrap();
 }
 
 impl TermAI {
@@ -165,6 +208,7 @@ impl TermAI {
                     let input = UserInput::new(file_path);
                     function.setup_for_action(&input);
                     let messages = function.input_to_messages(input);
+                    println!("{:?}", messages);
                     for message in messages {
                         gpt.chat(model, &message, &mut |res| {
                             print!("{}", res.delta_content());
@@ -202,7 +246,6 @@ impl TermAI {
                 file_path,
                 source,
             } => {
-                let mut gpt = ChatGpt::from_env().unwrap();
                 let model = if *gpt_version == GptVersion::Gpt3 {
                     OpenAIModel::Gpt3Dot5Turbo
                 } else {
@@ -211,17 +254,11 @@ impl TermAI {
 
                 if let Some(file_path) = file_path.as_ref() {
                     let mut function = FileTranslator::default();
-                    let mut message = Message::new(Role::User, file_path);
-                    function.switch_do_action(&message);
-                    function.change_request(&mut message);
-                    gpt.chat(model, &message, &mut |res| {
-                        print!("{}", res.delta_content());
-                        std::io::stdout().flush().unwrap();
-                        function.handle_stream(res)
-                    })
-                    .unwrap();
-                    function.action_at_end().unwrap();
+                    let mut client = GptClient::from_env().unwrap();
+                    let input = UserInput::new(file_path);
+                    exec_with_function(&mut client, model, input, &mut function)
                 } else {
+                    let mut gpt = ChatGpt::from_env().unwrap();
                     let mut function = Translator::new(TranslateMode::ToEnglish);
                     let mut message =
                         Message::new(Role::User, source.as_ref().expect("source is required"));
