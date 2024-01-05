@@ -387,11 +387,18 @@ impl Message {
         self.content
             .split_inclusive('.')
             .fold(vec![Message::new(role, "")], |mut acc, sentence| {
-                if acc.last().as_ref().unwrap().content.len() + sentence.len() >= GPT_REQUEST_LIMIT
-                {
+                let last = acc.last_mut().unwrap();
+                // case last content is empty, push sentence to last content even if it is over limit.
+                if last.content.is_empty() {
+                    last.content.push_str(sentence);
+                    return acc;
+                };
+                // case last content is not empty, push sentence to new content if it is over limit.
+                if last.content.len() + sentence.len() >= GPT_REQUEST_LIMIT {
                     acc.push(Message::new(role, sentence));
                     return acc;
                 };
+                // case last content is not empty, push sentence to last content if it is not over limit.
                 acc.last_mut().unwrap().content.push_str(sentence);
                 acc
             })

@@ -34,26 +34,37 @@ impl Default for Translator {
     }
 }
 impl GptFunction for Translator {
-    fn change_request(&self, request: &mut crate::gpt::client::Message) {
-        let content = Lang::from(&request.content);
-        let change = request.change_content();
-        match content {
-            Lang::English(s) => {
-                *change = format!("{}\n{}", Self::TO_JAPANESE_PREFIX, s);
-            }
-            Lang::Japanese(s) => match self.mode {
-                TranslateMode::ToKorean => {
-                    *change = format!("{}\n{}", Self::TO_KOREAN_PREFIX, s);
+    fn input_to_messages(&self, input: super::UserInput) -> Vec<Message> {
+        let add_prefix = |mut message: Message| -> Message {
+            let content = Lang::from(message.content.as_str());
+            let change_content = message.change_content();
+            match content {
+                Lang::English(s) => {
+                    *change_content = format!("{}\n{}", Self::TO_JAPANESE_PREFIX, s);
                 }
-                TranslateMode::ToChinese => {
-                    *change = format!("{}\n{}", Self::TO_CHINESE_PREFIX, s);
-                }
-                TranslateMode::ToEnglish => {
-                    *change = format!("{}\n{}", Self::TO_ENGLISH_PREFIX, s);
-                }
-                _ => {}
-            },
-        }
+                Lang::Japanese(s) => match self.mode {
+                    TranslateMode::ToKorean => {
+                        *change_content = format!("{}\n{}", Self::TO_KOREAN_PREFIX, s);
+                    }
+                    TranslateMode::ToChinese => {
+                        *change_content = format!("{}\n{}", Self::TO_CHINESE_PREFIX, s);
+                    }
+                    TranslateMode::ToEnglish => {
+                        *change_content = format!("{}\n{}", Self::TO_ENGLISH_PREFIX, s);
+                    }
+                    TranslateMode::ToJapanese => {}
+                },
+            };
+            message
+        };
+        Message::new(Role::User, input.content())
+            .split_by_dot_to_stay_gpt_limit()
+            .into_iter()
+            .map(add_prefix)
+            .collect()
+    }
+    fn can_action(&self) -> bool {
+        true
     }
 }
 #[derive(Debug, PartialEq, Eq)]
@@ -180,24 +191,23 @@ mod tests {
 
     use super::*;
     #[test]
-    fn 翻訳を促すmessageに変換する() {
-        let mut message = Message::new(Role::User, "hello");
+    fn 翻訳を促すmessageに自動変換する() {
+        let input = UserInput::new("hello");
         let sut = Translator::default();
-        sut.change_request(&mut message);
-
+        let messages = sut.input_to_messages(input);
         assert_eq!(
-            message,
+            messages[0],
             Message::new(
                 Role::User,
                 format!("{}\n{}", Translator::TO_JAPANESE_PREFIX, "hello")
             )
         );
-        let mut message = Message::new(Role::User, "helloは日本語でこんにちはです");
-        let sut = Translator::default();
-        sut.change_request(&mut message);
 
+        let jp_input = UserInput::new("helloは日本語でこんにちはです");
+        let sut = Translator::default();
+        let messages = sut.input_to_messages(jp_input);
         assert_eq!(
-            message,
+            messages[0],
             Message::new(
                 Role::User,
                 format!(

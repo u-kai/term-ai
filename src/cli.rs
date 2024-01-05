@@ -71,33 +71,32 @@ enum SubCommands {
     },
 }
 
-fn display_result_and_handle_stream(
-    client: &mut GptClient,
-    f: &mut impl GptFunction,
-    req: ChatRequest,
-) -> crate::gpt::client::Result<()> {
-    client.request_mut_fn(req, |res| {
-        print!("{}", res.delta_content());
-        std::io::stdout().flush().unwrap();
-        f.handle_stream(res)
-    })
-}
-fn retry_request(
-    client: &mut GptClient,
-    req: ChatRequest,
-    f: &mut impl GptFunction,
-) -> crate::gpt::client::Result<()> {
-    client.re_connect()?;
-    sleep(Duration::from_secs(1));
-    display_result_and_handle_stream(client, f, req.clone())
-}
-
 fn exec_with_function(
     client: &mut GptClient,
     model: OpenAIModel,
     input: UserInput,
     f: &mut impl GptFunction,
 ) {
+    fn display_result_and_handle_stream(
+        client: &mut GptClient,
+        f: &mut impl GptFunction,
+        req: ChatRequest,
+    ) -> crate::gpt::client::Result<()> {
+        client.request_mut_fn(req, |res| {
+            print!("{}", res.delta_content());
+            std::io::stdout().flush().unwrap();
+            f.handle_stream(res)
+        })
+    }
+    fn retry_request(
+        client: &mut GptClient,
+        req: ChatRequest,
+        f: &mut impl GptFunction,
+    ) -> crate::gpt::client::Result<()> {
+        client.re_connect()?;
+        sleep(Duration::from_secs(1));
+        display_result_and_handle_stream(client, f, req.clone())
+    }
     f.setup_for_action(&input);
     let messages = f.input_to_messages(input);
     messages.into_iter().for_each(|message| {
@@ -205,27 +204,9 @@ impl TermAI {
                 };
                 if let Some(file_path) = file_path.as_ref() {
                     let mut function = FileTranslator::default();
+                    let mut client = GptClient::from_env().unwrap();
                     let input = UserInput::new(file_path);
-                    function.setup_for_action(&input);
-                    let messages = function.input_to_messages(input);
-                    println!("{:?}", messages);
-                    for message in messages {
-                        gpt.chat(model, &message, &mut |res| {
-                            print!("{}", res.delta_content());
-                            std::io::stdout().flush().unwrap();
-                            function.handle_stream(res)
-                        })
-                        .unwrap();
-                    }
-                    //function.switch_do_action(&message);
-                    //function.change_request(&mut message);
-                    //gpt.chat(model, &message, &mut |res| {
-                    //    print!("{}", res.delta_content());
-                    //    std::io::stdout().flush().unwrap();
-                    //    function.handle_stream(res)
-                    //})
-                    //.unwrap();
-                    function.action_at_end().unwrap();
+                    exec_with_function(&mut client, model, input, &mut function)
                 } else {
                     let mut function = Translator::new(TranslateMode::ToJapanese);
                     let mut message =
