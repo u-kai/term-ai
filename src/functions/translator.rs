@@ -88,7 +88,13 @@ impl FileTranslator {
         let mut file = std::fs::OpenOptions::new()
             .append(true)
             .open(self.source_path.as_str())?;
-        file.write_all(format!("\n{}", self.results()).as_bytes())
+        let result = self
+            .results()
+            .split('。')
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n");
+        file.write_all(format!("\n{}", result).as_bytes())
     }
     fn results(&self) -> &str {
         &self.inner
