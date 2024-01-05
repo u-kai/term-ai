@@ -384,6 +384,7 @@ impl Message {
             return vec![self];
         }
         let role = self.role;
+        // TODO split char is not only dot.
         self.content
             .split_inclusive('.')
             .fold(vec![Message::new(role, "")], |mut acc, sentence| {

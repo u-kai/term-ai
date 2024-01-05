@@ -191,6 +191,28 @@ mod tests {
 
     use super::*;
     #[test]
+    fn 翻訳を促すmessageに自動変換する_分割ver() {
+        let input = UserInput::new("hello world.good bye");
+        let sut = Translator::default();
+        let messages = sut.input_to_messages(input);
+
+        assert_eq!(messages.len(), 2);
+        assert_eq!(
+            messages[0],
+            Message::new(
+                Role::User,
+                format!("{}\n{}", Translator::TO_JAPANESE_PREFIX, "hello world.")
+            )
+        );
+        assert_eq!(
+            messages[1],
+            Message::new(
+                Role::User,
+                format!("{}\n{}", Translator::TO_JAPANESE_PREFIX, "good bye")
+            )
+        );
+    }
+    #[test]
     fn 翻訳を促すmessageに自動変換する() {
         let input = UserInput::new("hello");
         let sut = Translator::default();
@@ -202,7 +224,6 @@ mod tests {
                 format!("{}\n{}", Translator::TO_JAPANESE_PREFIX, "hello")
             )
         );
-
         let jp_input = UserInput::new("helloは日本語でこんにちはです");
         let sut = Translator::default();
         let messages = sut.input_to_messages(jp_input);
