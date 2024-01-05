@@ -4,7 +4,7 @@ use crate::gpt::client::{HandleResult, Message, Role};
 
 use super::{
     common::{change_request_to_file_content, get_file_content, is_file_path},
-    GptFunction,
+    GptFunction, UserInput,
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -57,11 +57,7 @@ impl GptFunction for Translator {
             };
             message
         };
-        Message::new(Role::User, input.content())
-            .split_by_dot_to_stay_gpt_limit()
-            .into_iter()
-            .map(add_prefix)
-            .collect()
+        input.to_messages().into_iter().map(add_prefix).collect()
     }
     fn can_action(&self) -> bool {
         true
@@ -117,8 +113,8 @@ impl GptFunction for FileTranslator {
             // self.source_path is not empty and is file path
             // so we can get file content safely
             let content = get_file_content(&self.source_path).unwrap();
-            Message::new(Role::User, content)
-                .split_by_dot_to_stay_gpt_limit()
+            UserInput::new(content)
+                .to_messages()
                 .into_iter()
                 .map(|mut message| {
                     let content = message.change_content();

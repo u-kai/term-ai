@@ -2,7 +2,7 @@ use crate::gpt::client::{Message, Role};
 
 use super::{
     common::{change_request_to_file_content, get_file_content, is_file_path},
-    GptFunction,
+    GptFunction, UserInput,
 };
 #[derive(Debug, Clone)]
 pub struct CodeReviewer {
@@ -34,11 +34,11 @@ impl GptFunction for CodeReviewer {
     }
     fn input_to_messages(&self, input: super::UserInput) -> Vec<Message> {
         if !self.can_action() {
-            return Message::new(Role::User, input.content()).split_by_dot_to_stay_gpt_limit();
+            return input.to_messages();
         }
         let content = get_file_content(input.content()).unwrap();
-        Message::new(Role::User, content)
-            .split_by_dot_to_stay_gpt_limit()
+        UserInput::new(content)
+            .to_messages()
             .into_iter()
             .map(|mut message| {
                 let content = message.change_content();
@@ -59,7 +59,7 @@ mod tests {
 
     use crate::{
         functions::{common::test_tool::TestFileFactory, UserInput},
-        gpt::client::{Message, Role},
+        gpt::client::Message,
     };
 
     use super::*;

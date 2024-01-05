@@ -351,10 +351,9 @@ pub struct ChatRequest {
 }
 impl ChatRequest {
     pub fn from_message(model: OpenAIModel, message: Message) -> Self {
-        let messages = message.split_by_dot_to_stay_gpt_limit();
         Self {
             model,
-            messages,
+            messages: vec![message],
             stream: true,
         }
     }
@@ -371,39 +370,12 @@ impl ChatRequest {
 }
 
 // This value is not official.
-#[cfg(not(test))]
-const GPT_REQUEST_LIMIT: usize = 4096;
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct Message {
     role: Role,
     pub(crate) content: String,
 }
 impl Message {
-    pub fn split_by_dot_to_stay_gpt_limit(self) -> Vec<Self> {
-        if self.content.len() <= GPT_REQUEST_LIMIT {
-            return vec![self];
-        }
-        let role = self.role;
-        // TODO split char is not only dot.
-        self.content
-            .split_inclusive('.')
-            .fold(vec![Message::new(role, "")], |mut acc, sentence| {
-                let last = acc.last_mut().unwrap();
-                // case last content is empty, push sentence to last content even if it is over limit.
-                if last.content.is_empty() {
-                    last.content.push_str(sentence);
-                    return acc;
-                };
-                // case last content is not empty, push sentence to new content if it is over limit.
-                if last.content.len() + sentence.len() >= GPT_REQUEST_LIMIT {
-                    acc.push(Message::new(role, sentence));
-                    return acc;
-                };
-                // case last content is not empty, push sentence to last content if it is not over limit.
-                acc.last_mut().unwrap().content.push_str(sentence);
-                acc
-            })
-    }
     pub fn new(role: Role, content: impl Into<String>) -> Self {
         Self {
             role,
@@ -544,8 +516,6 @@ impl Display for GptClientErrorKind {
         write!(f, "{}", kind)
     }
 }
-#[cfg(test)]
-const GPT_REQUEST_LIMIT: usize = 15;
 impl std::error::Error for GptClientError {}
 pub type Result<T> = std::result::Result<T, GptClientError>;
 #[cfg(test)]
@@ -555,15 +525,6 @@ mod tests {
     use super::fakes::*;
     use super::*;
 
-    #[test]
-    fn chat_request構造体はgptのメッセージ制限を超えないようにメッセージを分割して内部に保持する() {
-        let req = ChatRequest::from_message(
-            OpenAIModel::Gpt3Dot5Turbo,
-            Message::new(Role::User, "hello world.I like sushi".to_string()),
-        );
-        assert_eq!(req.get_message(0).unwrap().content, "hello world.");
-        assert_eq!(req.get_message(1).unwrap().content, "I like sushi");
-    }
     #[test]
     #[ignore = "実際にproxy通信するので、CIでのテストは行わない"]
     fn proxyを利用してgpt通信を行うことが可能() {

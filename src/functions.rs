@@ -79,12 +79,21 @@ impl GptFunction for GptFunctionContainer {
 #[cfg(test)]
 mod tests {
     use crate::{
-        functions::GptFunction,
+        functions::{GptFunction, UserInput},
         gpt::client::{ChatResponse, HandleResult},
     };
 
     use super::GptFunctionContainer;
 
+    #[test]
+    #[allow(non_snake_case)]
+    fn UserInputはGPT_REQUEST_LIMITを超える文字列を分割してMessageに変換する() {
+        let input = UserInput::new("hello world. hello. world.");
+        let messages = input.to_messages();
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0].content, "hello world.");
+        assert_eq!(messages[1].content, " hello. world.");
+    }
     #[test]
     #[allow(non_snake_case)]
     fn GptFunctionContainerはGptDefaultFunctionを保持しておりhandle_streamでProgressDoneを正常に判断できる(
@@ -129,6 +138,10 @@ impl GptDefaultFunction {
 }
 impl GptFunction for GptDefaultFunction {}
 
+#[cfg(not(test))]
+const GPT_REQUEST_LIMIT: usize = 4096;
+#[cfg(test)]
+const GPT_REQUEST_LIMIT: usize = 15;
 #[derive(Debug, Clone)]
 pub struct UserInput(String);
 impl UserInput {
@@ -138,16 +151,40 @@ impl UserInput {
     pub fn content(&self) -> &str {
         &self.0
     }
+    pub fn to_messages(self) -> Vec<Message> {
+        if self.content().len() <= GPT_REQUEST_LIMIT {
+            return vec![Message::new(Role::User, self.content())];
+        }
+        let role = Role::User;
+        // TODO split char is not only dot.
+        self.content().split_inclusive('.').fold(
+            vec![Message::new(role, "")],
+            |mut acc, sentence| {
+                let last = acc.last_mut().unwrap();
+                // case last content is empty, push sentence to last content even if it is over limit.
+                if last.content.is_empty() {
+                    last.content.push_str(sentence);
+                    return acc;
+                };
+                // case last content is not empty, push sentence to new content if it is over limit.
+                if last.content.len() + sentence.len() >= GPT_REQUEST_LIMIT {
+                    acc.push(Message::new(role, sentence));
+                    return acc;
+                };
+                // case last content is not empty, push sentence to last content if it is not over limit.
+                acc.last_mut().unwrap().content.push_str(sentence);
+                acc
+            },
+        )
+    }
 }
-
 pub trait GptFunction {
     // TODO Migration
     fn switch_do_action(&mut self, _request: &Message) {}
     fn change_request(&self, _request: &mut Message) {}
     //
     fn input_to_messages(&self, input: UserInput) -> Vec<Message> {
-        let UserInput(input) = input;
-        Message::new(Role::User, input).split_by_dot_to_stay_gpt_limit()
+        input.to_messages()
     }
     fn setup_for_action(&mut self, _input: &UserInput) {}
     fn can_action(&self) -> bool {
