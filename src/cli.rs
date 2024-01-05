@@ -196,30 +196,20 @@ impl TermAI {
                 file_path,
                 source,
             } => {
-                let mut gpt = ChatGpt::from_env().unwrap();
                 let model = if *gpt_version == GptVersion::Gpt3 {
                     OpenAIModel::Gpt3Dot5Turbo
                 } else {
                     OpenAIModel::Gpt4
                 };
+                let mut client = GptClient::from_env().unwrap();
                 if let Some(file_path) = file_path.as_ref() {
                     let mut function = FileTranslator::default();
-                    let mut client = GptClient::from_env().unwrap();
                     let input = UserInput::new(file_path);
                     exec_with_function(&mut client, model, input, &mut function)
                 } else {
                     let mut function = Translator::new(TranslateMode::ToJapanese);
-                    let mut message =
-                        Message::new(Role::User, source.as_ref().expect("source is required"));
-                    function.switch_do_action(&message);
-                    function.change_request(&mut message);
-                    gpt.chat(model, &message, &mut |res| {
-                        print!("{}", res.delta_content());
-                        std::io::stdout().flush().unwrap();
-                        function.handle_stream(res)
-                    })
-                    .unwrap();
-                    function.action_at_end().unwrap();
+                    let input = UserInput::new(source.as_ref().expect("source is required"));
+                    exec_with_function(&mut client, model, input, &mut function)
                 };
             }
             SubCommands::TranslatorEn {
@@ -232,49 +222,30 @@ impl TermAI {
                 } else {
                     OpenAIModel::Gpt4
                 };
-
+                let mut client = GptClient::from_env().unwrap();
                 if let Some(file_path) = file_path.as_ref() {
                     let mut function = FileTranslator::default();
-                    let mut client = GptClient::from_env().unwrap();
                     let input = UserInput::new(file_path);
                     exec_with_function(&mut client, model, input, &mut function)
                 } else {
-                    let mut gpt = ChatGpt::from_env().unwrap();
                     let mut function = Translator::new(TranslateMode::ToEnglish);
-                    let mut message =
-                        Message::new(Role::User, source.as_ref().expect("source is required"));
-                    function.switch_do_action(&message);
-                    function.change_request(&mut message);
-                    gpt.chat(model, &message, &mut |res| {
-                        print!("{}", res.delta_content());
-                        std::io::stdout().flush().unwrap();
-                        function.handle_stream(res)
-                    })
-                    .unwrap();
-                    function.action_at_end().unwrap();
+                    let input = UserInput::new(source.as_ref().expect("source is required"));
+                    exec_with_function(&mut client, model, input, &mut function)
                 };
             }
             SubCommands::CodeReviewer {
                 gpt_version,
                 file_path,
             } => {
-                let mut gpt = ChatGpt::from_env().unwrap();
+                let mut client = GptClient::from_env().unwrap();
                 let model = if *gpt_version == GptVersion::Gpt3 {
                     OpenAIModel::Gpt3Dot5Turbo
                 } else {
                     OpenAIModel::Gpt4
                 };
                 let mut function = CodeReviewer::default();
-                let mut message = Message::new(Role::User, file_path);
-                function.switch_do_action(&message);
-                function.change_request(&mut message);
-                gpt.chat(model, &message, &mut |res| {
-                    print!("{}", res.delta_content());
-                    std::io::stdout().flush().unwrap();
-                    function.handle_stream(res)
-                })
-                .unwrap();
-                function.action_at_end().unwrap();
+                let input = UserInput::new(file_path);
+                exec_with_function(&mut client, model, input, &mut function)
             }
         }
     }
