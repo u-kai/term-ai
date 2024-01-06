@@ -1,4 +1,4 @@
-use crate::gpt::client::{Message, Role};
+use crate::gpt::client::Message;
 
 use super::{
     common::{change_request_to_file_content, get_file_content, is_file_path},
@@ -59,7 +59,7 @@ mod tests {
 
     use crate::{
         functions::{common::test_tool::TestFileFactory, UserInput},
-        gpt::client::Message,
+        gpt::client::{Message, Role},
     };
 
     use super::*;

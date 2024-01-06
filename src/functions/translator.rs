@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use crate::gpt::client::{HandleResult, Message, Role};
+use crate::gpt::client::{HandleResult, Message};
 
 use super::{
     common::{change_request_to_file_content, get_file_content, is_file_path},
@@ -99,9 +99,6 @@ impl FileTranslator {
     fn results(&self) -> &str {
         &self.inner
     }
-    fn do_action(&self) -> bool {
-        self.do_action
-    }
 }
 impl GptFunction for FileTranslator {
     fn setup_for_action(&mut self, input: &super::UserInput) {
@@ -132,14 +129,8 @@ impl GptFunction for FileTranslator {
             GptFunction::input_to_messages(self, input)
         }
     }
-    fn switch_do_action(&mut self, request: &crate::gpt::client::Message) {
-        if is_file_path(&request.content) {
-            self.do_action = true;
-            self.source_path = request.content.trim().to_string();
-        }
-    }
     fn action_at_end(&mut self) -> Result<(), Box<dyn std::error::Error + 'static>> {
-        if self.do_action() {
+        if self.can_action() {
             self.append_result()?;
             *self = Self::new();
         }
@@ -149,7 +140,7 @@ impl GptFunction for FileTranslator {
         &mut self,
         response: &crate::gpt::client::ChatResponse,
     ) -> crate::gpt::client::HandleResult {
-        if self.do_action() {
+        if self.can_action() {
             match response {
                 crate::gpt::client::ChatResponse::DeltaContent(content) => {
                     self.inner.push_str(content);
@@ -344,7 +335,7 @@ mod tests {
 
         test_file.remove_dir_all();
         assert_eq!(content, "hello\nこんにちは");
-        assert_eq!(sut.do_action(), false);
+        assert_eq!(sut.can_action(), false);
     }
     #[test]
     fn actionがoffであれば何もしない() {
@@ -352,7 +343,7 @@ mod tests {
 
         let mut sut = FileTranslator::new();
         sut.switch_do_action(&message);
-        assert_eq!(sut.do_action(), false);
+        assert_eq!(sut.can_action(), false);
 
         sut.change_request(&mut message);
         assert_eq!(message.content, "none");
