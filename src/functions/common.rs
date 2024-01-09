@@ -1,25 +1,9 @@
 use std::{fs::File, io::Read, path::Path};
 
-use crate::gpt::client::Message;
-
 pub fn is_file_path(path: &str) -> bool {
     let path = path.trim();
     let path = Path::new(path);
     path.exists() && path.is_file()
-}
-pub fn change_request_to_file_content(
-    prefix: &str,
-    request: &mut Message,
-) -> Result<(), std::io::Error> {
-    if is_file_path(&request.content) {
-        let path = request.content.trim();
-        let mut file = File::open(path)?;
-        let mut content = String::new();
-        file.read_to_string(&mut content)?;
-        let message_content = request.change_content();
-        *message_content = format!("{}\n{}", prefix, content);
-    };
-    Ok(())
 }
 pub fn get_file_content(path: &str) -> Result<String, std::io::Error> {
     let mut file = File::open(path)?;

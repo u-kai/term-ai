@@ -3,7 +3,7 @@ use std::io::Write;
 use crate::gpt::client::{HandleResult, Message};
 
 use super::{
-    common::{change_request_to_file_content, get_file_content, is_file_path},
+    common::{get_file_content, is_file_path},
     GptFunction, UserInput,
 };
 
@@ -126,7 +126,7 @@ impl GptFunction for FileTranslator {
                 })
                 .collect()
         } else {
-            GptFunction::input_to_messages(self, input)
+            input.to_messages()
         }
     }
     fn action_at_end(&mut self) -> Result<(), Box<dyn std::error::Error + 'static>> {
@@ -151,11 +151,6 @@ impl GptFunction for FileTranslator {
         } else {
             HandleResult::from(response)
         }
-    }
-    fn change_request(&self, request: &mut crate::gpt::client::Message) {
-        if let Err(err) = change_request_to_file_content(Self::PREFIX, request) {
-            eprintln!("{}", err);
-        };
     }
 }
 
@@ -321,9 +316,9 @@ mod tests {
         let test_file = TestFileFactory::create("tmp");
         test_file.create_file_under_root("hello.txt", "hello");
 
-        let request = Message::new(Role::User, "tmp/hello.txt");
+        let input = UserInput::new("tmp/hello.txt");
 
-        sut.switch_do_action(&request);
+        sut.setup_for_action(&input);
 
         sut.handle_stream(&ChatResponse::DeltaContent("こん".to_string()));
         sut.handle_stream(&ChatResponse::DeltaContent("にちは".to_string()));
@@ -339,14 +334,14 @@ mod tests {
     }
     #[test]
     fn actionがoffであれば何もしない() {
-        let mut message = Message::new(Role::User, "none");
+        let input = UserInput::new("none");
 
         let mut sut = FileTranslator::new();
-        sut.switch_do_action(&message);
-        assert_eq!(sut.can_action(), false);
+        sut.setup_for_action(&input);
+        assert!(!sut.can_action());
 
-        sut.change_request(&mut message);
-        assert_eq!(message.content, "none");
+        let messages = sut.input_to_messages(input);
+        assert_eq!(messages[0].content, "none");
 
         let progress = sut.handle_stream(&ChatResponse::DeltaContent("こん".to_string()));
         assert_eq!(progress, HandleResult::Progress);

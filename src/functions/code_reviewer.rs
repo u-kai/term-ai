@@ -1,7 +1,7 @@
 use crate::gpt::client::Message;
 
 use super::{
-    common::{change_request_to_file_content, get_file_content, is_file_path},
+    common::{get_file_content, is_file_path},
     GptFunction, UserInput,
 };
 #[derive(Debug, Clone)]
@@ -46,11 +46,6 @@ impl GptFunction for CodeReviewer {
                 message
             })
             .collect()
-    }
-    fn change_request(&self, request: &mut Message) {
-        if let Err(err) = change_request_to_file_content(self.prefix, request) {
-            eprintln!("{}", err);
-        };
     }
 }
 

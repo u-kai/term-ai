@@ -8,10 +8,7 @@ use crate::{
         translator::{FileTranslator, TranslateMode, Translator},
         GptFunction, UserInput,
     },
-    gpt::{
-        chat::ChatGpt,
-        client::{ChatRequest, GptClient, Message, OpenAIModel, Role},
-    },
+    gpt::client::{ChatRequest, GptClient, OpenAIModel},
 };
 use clap::{Parser, Subcommand};
 use std::{io::Write, str::FromStr, thread::sleep, time::Duration};
@@ -157,45 +154,29 @@ impl TermAI {
                 gpt_version,
                 source,
             } => {
-                let mut gpt = ChatGpt::from_env().unwrap();
                 let model = if *gpt_version == GptVersion::Gpt3 {
                     OpenAIModel::Gpt3Dot5Turbo
                 } else {
                     OpenAIModel::Gpt4
                 };
+                let mut client = GptClient::from_env().unwrap();
                 let mut function = MacSpeaker::default();
-                let mut message = Message::new(Role::User, source);
-                function.switch_do_action(&message);
-                function.change_request(&mut message);
-                gpt.chat(model, &message, &mut |res| {
-                    print!("{}", res.delta_content());
-                    std::io::stdout().flush().unwrap();
-                    function.handle_stream(res)
-                })
-                .unwrap();
-                function.action_at_end().unwrap();
+                let input = UserInput::new(source);
+                exec_with_function(&mut client, model, input, &mut function)
             }
             SubCommands::CodeCapture {
                 gpt_version,
                 source,
             } => {
-                let mut gpt = ChatGpt::from_env().unwrap();
                 let model = if *gpt_version == GptVersion::Gpt3 {
                     OpenAIModel::Gpt3Dot5Turbo
                 } else {
                     OpenAIModel::Gpt4
                 };
                 let mut function = GptCodeCapture::new_with_file_writer(".");
-                let mut message = Message::new(Role::User, source);
-                function.switch_do_action(&message);
-                function.change_request(&mut message);
-                gpt.chat(model, &message, &mut |res| {
-                    print!("{}", res.delta_content());
-                    std::io::stdout().flush().unwrap();
-                    function.handle_stream(res)
-                })
-                .unwrap();
-                function.action_at_end().unwrap();
+                let mut client = GptClient::from_env().unwrap();
+                let input = UserInput::new(source);
+                exec_with_function(&mut client, model, input, &mut function)
             }
             SubCommands::TranslatorJp {
                 gpt_version,

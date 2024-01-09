@@ -2,10 +2,10 @@ use std::io::Write;
 
 use crate::gpt::{
     chat::ChatGpt,
-    client::{GptClientError, GptClientErrorKind, Message, OpenAIModel, Role},
+    client::{GptClientError, GptClientErrorKind, Message, OpenAIModel},
 };
 
-use super::{GptFunction, GptFunctionContainer};
+use super::{GptFunction, GptFunctionContainer, UserInput};
 
 pub struct ChatGptRepl {
     chat_gpt: ChatGpt,
@@ -65,15 +65,15 @@ impl ChatGptRepl {
                 println!("clear chat history");
                 continue;
             }
-            let mut message = Message::new(Role::User, &message);
+            let input = UserInput::new(&message);
 
             self.gpt_first();
 
-            self.container.switch_do_action(&message);
-            self.container.change_request(&mut message);
-            self.chat_with_retry(model, &message)?;
-            self.container.action_at_end()?;
+            for message in self.container.input_to_messages(input) {
+                self.chat_with_retry(model, &message)?;
+            }
 
+            self.container.action_at_end()?;
             Self::gpt_finish();
         }
     }

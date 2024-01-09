@@ -34,19 +34,6 @@ impl Default for GptDefaultFunction {
 }
 
 impl GptFunction for GptFunctionContainer {
-    // TODO Migration
-    fn switch_do_action(&mut self, request: &Message) {
-        self.functions
-            .iter_mut()
-            .for_each(|f| f.switch_do_action(request));
-    }
-    fn change_request(&self, request: &mut Message) {
-        self.functions.iter().for_each(|f| {
-            f.change_request(request);
-        });
-    }
-    //
-    //
     fn setup_for_action(&mut self, input: &UserInput) {
         self.functions
             .iter_mut()
@@ -179,10 +166,6 @@ impl UserInput {
     }
 }
 pub trait GptFunction {
-    // TODO Migration
-    fn switch_do_action(&mut self, _request: &Message) {}
-    fn change_request(&self, _request: &mut Message) {}
-    //
     fn input_to_messages(&self, input: UserInput) -> Vec<Message> {
         input.to_messages()
     }

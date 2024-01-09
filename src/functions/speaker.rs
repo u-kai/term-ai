@@ -20,6 +20,9 @@ impl MacSpeaker {
     }
 }
 impl GptFunction for MacSpeaker {
+    fn can_action(&self) -> bool {
+        true
+    }
     fn handle_stream(
         &mut self,
         response: &crate::gpt::client::ChatResponse,

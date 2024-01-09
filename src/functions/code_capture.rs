@@ -69,6 +69,9 @@ impl GptCodeCapture<SampleFileWriter<DefaultRandGenerator>> {
     }
 }
 impl<W: CodeWriter> GptFunction for GptCodeCapture<W> {
+    fn can_action(&self) -> bool {
+        true
+    }
     fn handle_stream(
         &mut self,
         response: &crate::gpt::client::ChatResponse,
