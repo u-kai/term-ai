@@ -265,3 +265,21 @@ impl FromStr for GptVersion {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn chat_test() {
+        let sut = TermAI {
+            subcommand: SubCommands::Chat {
+                gpt_version: GptVersion::Gpt3,
+                code_capture: false,
+                code_reviewer: false,
+                translator: None,
+                speaker: false,
+            },
+        };
+        sut.run();
+    }
+}

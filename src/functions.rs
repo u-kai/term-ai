@@ -41,15 +41,17 @@ impl GptFunction for GptFunctionContainer {
     }
     // only one function can action input to message
     fn input_to_messages(&self, input: UserInput) -> Vec<Message> {
-        self.functions
+        if let Some(action_func) = self
+            .functions
             .iter()
             .filter(|f| f.can_action())
             .next()
             .as_ref()
-            // This struct is must contain default function
-            // so unwrap is safe
-            .unwrap()
-            .input_to_messages(input)
+        {
+            action_func.input_to_messages(input)
+        } else {
+            input.to_messages()
+        }
     }
     fn handle_stream(&mut self, response: &ChatResponse) -> HandleResult {
         self.functions
