@@ -33,6 +33,7 @@ enum SubCommands {
         #[clap(short = 's', long = "speaker", default_value = "false")]
         speaker: bool,
     },
+    #[cfg(target_os = "macos")]
     Speaker {
         #[clap(short = 'v', long = "gpt-version", default_value = "gpt3")]
         gpt_version: GptVersion,
@@ -150,6 +151,7 @@ impl TermAI {
                     repl.repl_gpt4().unwrap();
                 }
             }
+            #[cfg(target_os = "macos")]
             SubCommands::Speaker {
                 gpt_version,
                 source,
