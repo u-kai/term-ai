@@ -214,7 +214,7 @@ impl GptClient {
     fn send_before(&mut self, req: ChatRequest) {
         self.sse_client.post().bearer_auth(self.key.key()).json(req);
     }
-    fn client_builder() -> SseClientBuilder<SseTlsConnector> {
+    fn client_builder() -> SseClientBuilder {
         SseClientBuilder::new(&Self::URL.try_into().unwrap())
     }
 }
