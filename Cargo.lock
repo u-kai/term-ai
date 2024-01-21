@@ -406,7 +406,7 @@ dependencies = [
 [[package]]
 name = "rsse"
 version = "0.1.0"
-source = "git+https://github.com/u-kai/rsse.git?branch=main#62933c7347fb7511bf16563cae94b7c4185a31d8"
+source = "git+https://github.com/u-kai/rsse.git?branch=main#b735dc0158ed7621ffc5e1180ce0052ccc0f6ac7"
 dependencies = [
  "anyhow",
  "rustls",
