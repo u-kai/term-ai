@@ -1,4 +1,4 @@
-use std::io::Write;
+use std::{io::Write, thread};
 
 use crate::gpt::{
     chat::ChatGpt,
@@ -49,6 +49,43 @@ impl ChatGptRepl {
     }
     pub fn repl_gpt3(&mut self) -> Result<(), Box<dyn std::error::Error + 'static>> {
         self.repl(OpenAIModel::Gpt3Dot5Turbo)
+    }
+    // TODO: integrate with repl
+    pub fn repl_with_input_fn<F: Fn(&str) + Send + Sync + 'static + Copy>(
+        &mut self,
+        model: OpenAIModel,
+        input_fn: F,
+    ) -> Result<(), Box<dyn std::error::Error + 'static>> {
+        loop {
+            self.user_first();
+            let Ok(message) = Self::user_input() else {
+                println!("invalid input. please input again");
+                continue;
+            };
+            if Self::is_exit(&message) {
+                return Ok(());
+            }
+            if Self::is_clear(&message) {
+                self.chat_gpt.clear();
+                println!("clear chat history");
+                continue;
+            }
+            let mes = message.clone();
+            let handle = thread::spawn(move || {
+                input_fn(&mes);
+            });
+            let input = UserInput::new(&message);
+
+            self.gpt_first();
+
+            for message in self.container.input_to_messages(input) {
+                self.chat_with_retry(model, &message)?;
+            }
+
+            self.container.action_at_end()?;
+            Self::gpt_finish();
+            handle.join().unwrap();
+        }
     }
     pub fn repl(&mut self, model: OpenAIModel) -> Result<(), Box<dyn std::error::Error + 'static>> {
         loop {

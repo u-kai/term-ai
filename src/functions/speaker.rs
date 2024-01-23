@@ -52,7 +52,7 @@ fn multi_lang_say(message: &str) -> Result<(), std::io::Error> {
     Ok(())
 }
 #[cfg(target_os = "macos")]
-fn say_command(message: &str, speaker: &MacSayCommandSpeaker) -> Result<(), std::io::Error> {
+pub fn say_command(message: &str, speaker: &MacSayCommandSpeaker) -> Result<(), std::io::Error> {
     let result = Command::new("say")
         .args(["-v", speaker.to_name(), message])
         .output()?;

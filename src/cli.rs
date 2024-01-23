@@ -5,6 +5,7 @@ use crate::{
         code_capture::GptCodeCapture,
         code_reviewer::CodeReviewer,
         repl::ChatGptRepl,
+        speaker::{say_command, MacSayCommandSpeaker},
         translator::{FileTranslator, TranslateMode, Translator},
         GptFunction, UserInput,
     },
@@ -32,6 +33,12 @@ enum SubCommands {
         translator: Option<TranslateMode>,
         #[clap(short = 's', long = "speaker", default_value = "false")]
         speaker: bool,
+    },
+    #[cfg(target_os = "macos")]
+    #[clap(name = "tas")]
+    TranslateAndSpeak {
+        #[clap(short = 'v', long = "gpt-version", default_value = "gpt3")]
+        gpt_version: GptVersion,
     },
     #[cfg(target_os = "macos")]
     Speaker {
@@ -124,6 +131,23 @@ impl TermAI {
 
     pub fn run(&self) {
         match &self.subcommand {
+            #[cfg(target_os = "macos")]
+            SubCommands::TranslateAndSpeak { gpt_version } => {
+                let mut repl = ChatGptRepl::new();
+                repl.add_functions(Box::new(Translator::new(TranslateMode::ToJapanese)));
+                match gpt_version {
+                    GptVersion::Gpt3 => repl
+                        .repl_with_input_fn(OpenAIModel::Gpt3Dot5Turbo, |input| {
+                            say_command(input, &MacSayCommandSpeaker::Karen).unwrap();
+                        })
+                        .unwrap(),
+                    GptVersion::Gpt4 => repl
+                        .repl_with_input_fn(OpenAIModel::Gpt4, |input| {
+                            say_command(input, &MacSayCommandSpeaker::Karen).unwrap();
+                        })
+                        .unwrap(),
+                };
+            }
             SubCommands::Chat {
                 gpt_version,
                 code_capture,
