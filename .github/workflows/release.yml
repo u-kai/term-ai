@@ -1,6 +1,5 @@
 name: Release
 
-# Releasesへのファイル追加のために書き込み権限が必要
 permissions:
   contents: write
 

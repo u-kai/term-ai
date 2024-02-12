@@ -109,19 +109,13 @@ fn exec_with_function(
     messages.into_iter().for_each(|message| {
         let req = ChatRequest::from_message(model, message);
         display_result_and_handle_stream(client, f, req.clone())
-            .or_else(|e| {
-                println!("Error: {}\n call retry", e.to_string());
-                retry_request(client, req.clone(), f)
-            })
-            .or_else(|e| {
-                println!("Error: {}\n call retry", e.to_string());
-                retry_request(client, req.clone(), f)
-            })
+            .or_else(|_e| retry_request(client, req.clone(), f))
+            .or_else(|_e| retry_request(client, req.clone(), f))
             .or_else(|e| {
                 f.action_at_end().unwrap();
                 Err(e)
             })
-            .unwrap();
+            .unwrap()
     });
     f.action_at_end().unwrap();
 }
