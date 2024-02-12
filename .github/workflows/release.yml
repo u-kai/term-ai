@@ -1,77 +1,108 @@
-name: Build and Release
+name: Release
+
+# Releasesへのファイル追加のために書き込み権限が必要
+permissions:
+  contents: write
 
 on:
   push:
     tags:
-      - "v*"
+      - v*
 
-permissions: write-all
 jobs:
   build:
-    name: Build on ${{ matrix.os }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.job.os }}
     strategy:
+      fail-fast: false
       matrix:
-        include:
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            binary_extension:
-              .exe
-              #- os: macos-latest
-              #  target: x86_64-apple-darwin
-              #  binary_extension: ""
-              #- os: macos-latest
-              #  target: aarch64-apple-darwin
-              #  binary_extension: ""
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            binary_extension: ""
+        job:
+          - {
+              os: ubuntu-latest,
+              target: x86_64-unknown-linux-gnu,
+              use-cross: false,
+              extension: "",
+            }
+          - {
+              os: ubuntu-latest,
+              target: x86_64-unknown-linux-musl,
+              use-cross: true,
+              extension: "",
+            }
+          - {
+              os: ubuntu-latest,
+              target: armv7-unknown-linux-gnueabihf,
+              use-cross: true,
+              extension: "",
+            }
+          - {
+              os: ubuntu-latest,
+              target: armv7-unknown-linux-musleabihf,
+              use-cross: true,
+              extension: "",
+            }
+          - {
+              os: ubuntu-latest,
+              target: aarch64-unknown-linux-gnu,
+              use-cross: true,
+              extension: "",
+            }
+          - {
+              os: ubuntu-latest,
+              target: aarch64-unknown-linux-musl,
+              use-cross: true,
+              extension: "",
+            }
+          - {
+              os: macos-latest,
+              target: x86_64-apple-darwin,
+              use-cross: false,
+              extension: "",
+            }
+          - {
+              os: macos-latest,
+              target: aarch64-apple-darwin,
+              use-cross: false,
+              extension: "",
+            }
+          - {
+              os: windows-latest,
+              target: x86_64-pc-windows-msvc,
+              use-cross: false,
+              extension: .exe,
+            }
     steps:
-      - uses: actions/checkout@v2
-      - name: Install Rust
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Extract crate information
+        shell: bash
+        run: |
+          echo "PROJECT_NAME=$(sed -n 's/^name = "\(.*\)"/\1/p' Cargo.toml | head -n1)" >> $GITHUB_ENV
+
+      - name: Install Rust toolchain
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
+          target: ${{ matrix.job.target }}
           override: true
-          target: ${{ matrix.target }}
+          profile: minimal
 
-      - name: Build binary
-        run: cargo build --target ${{ matrix.target }} --release
-
-      - name: Rename binary
-        run: mv target/${{ matrix.target }}/release/termai${{ matrix.binary_extension }} termai-${{ matrix.target }}${{ matrix.binary_extension }}
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v2
+      - name: Build
+        uses: actions-rs/cargo@v1
         with:
-          name: termai-${{ matrix.target }}
-          path: termai-${{ matrix.target }}${{ matrix.binary_extension }}
+          use-cross: ${{ matrix.job.use-cross }}
+          command: build
+          args: --release --target ${{ matrix.job.target }}
 
-      - name: Download all artifacts
-        uses: actions/download-artifact@v2
-        with:
-          path: artifacts
+      - name: Rename artifacts
+        shell: bash
+        run: |
+          mv target/${{ matrix.job.target }}/release/${{ env.PROJECT_NAME }}{,-${{ github.ref_name }}-${{ matrix.job.target }}${{ matrix.job.extension }}}
 
-      - name: ls debug
-        run: ls -la ./artifacts
-
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
+      - name: Release
+        uses: softprops/action-gh-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
-          draft: false
-          prerelease: false
-
-      - name: Upload Release Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./artifacts/termai-${{ matrix.target }}
-          asset_name: termai-${{ matrix.os }}${{ matrix.binary_extension }}
-          asset_content_type: application/octet-stream
+          files: |
+            target/${{ matrix.job.target }}/release/${{ env.PROJECT_NAME }}-${{ github.ref_name }}-${{ matrix.job.target }}${{ matrix.job.extension }}
