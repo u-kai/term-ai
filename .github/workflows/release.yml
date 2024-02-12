@@ -12,15 +12,16 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        os: [windows-latest, ubuntu-latest] #,macos-latest,]
         include:
           - os: windows-latest
-            target: x86_64-pc-windows-gnu
-            binary_extension:
-              .exe
-              #- os: macos-latest
-              #  target: x86_64-apple-darwin
-              #  binary_extension: ""
+            target: x86_64-pc-windows-msvc
+            binary_extension: .exe
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            binary_extension: ""
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            binary_extension: ""
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             binary_extension: ""
@@ -31,17 +32,10 @@ jobs:
         with:
           toolchain: stable
           override: true
-
-      - name: Install cross
-        run: cargo install cross
-
-      - name: Install target
-        run: rustup target add ${{ matrix.target }}
+          target: ${{ matrix.target }}
 
       - name: Build binary
-        run: cross build --target ${{ matrix.target }} --release
-        env:
-          CARGO_TERM_COLOR: always
+        run: cargo build --target ${{ matrix.target }} --release
 
       - name: Rename binary
         run: mv target/${{ matrix.target }}/release/termai${{ matrix.binary_extension }} termai-${{ matrix.target }}${{ matrix.binary_extension }}
@@ -56,6 +50,9 @@ jobs:
         uses: actions/download-artifact@v2
         with:
           path: artifacts
+
+      - name: ls debug
+        run: ls -la ./artifacts
 
       - name: Create Release
         id: create_release
@@ -74,6 +71,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./artifacts/termai-${{ matrix.target }}${{ matrix.binary_extension }}
-          asset_name: termai-${{ matrix.os }}
+          asset_path: ./artifacts/termai-${{ matrix.target }}
+          asset_name: termai-${{ matrix.os }}${{ matrix.binary_extension }}
           asset_content_type: application/octet-stream
