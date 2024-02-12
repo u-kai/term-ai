@@ -52,10 +52,6 @@ jobs:
           name: termai-${{ matrix.target }}
           path: termai-${{ matrix.target }}${{ matrix.binary_extension }}
 
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v2
         with:
