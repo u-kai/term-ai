@@ -1,11 +1,13 @@
 #[cfg(target_os = "macos")]
 use crate::functions::speaker::MacSpeaker;
+
+#[cfg(target_os = "macos")]
+use crate::functions::speaker::{say_command, MacSayCommandSpeaker};
 use crate::{
     functions::{
         code_capture::GptCodeCapture,
         code_reviewer::CodeReviewer,
         repl::ChatGptRepl,
-        speaker::{say_command, MacSayCommandSpeaker},
         translator::{FileTranslator, TranslateMode, Translator},
         GptFunction, UserInput,
     },
