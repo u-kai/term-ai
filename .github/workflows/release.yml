@@ -57,9 +57,6 @@ jobs:
         with:
           path: artifacts
 
-      - name: ls debug
-        run: ls -la ./artifacts
-
       - name: Create Release
         id: create_release
         uses: actions/create-release@v1
