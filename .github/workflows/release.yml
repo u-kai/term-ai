@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - "v*"
+    paths:
+      - ".github/workflows/release.yml"
 
 jobs:
   build:
@@ -19,6 +21,9 @@ jobs:
           - os: macos-latest
             target: x86_64-apple-darwin
             binary_extension: ""
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            binary_extension: ""
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             binary_extension: ""
@@ -32,6 +37,9 @@ jobs:
 
       - name: Install cross
         run: cargo install cross
+
+      - name: Install target
+        run: rustup target add ${{ matrix.target }}
 
       - name: Build binary
         run: cross build --target ${{ matrix.target }} --release
