@@ -11,14 +11,15 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        os: [windows-latest, ubuntu-latest] #,macos-latest,]
         include:
           - os: windows-latest
             target: x86_64-pc-windows-gnu
-            binary_extension: .exe
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            binary_extension: ""
+            binary_extension:
+              .exe
+              #- os: macos-latest
+              #  target: x86_64-apple-darwin
+              #  binary_extension: ""
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             binary_extension: ""
@@ -42,13 +43,13 @@ jobs:
           CARGO_TERM_COLOR: always
 
       - name: Rename binary
-        run: mv target/${{ matrix.target }}/release/my_project${{ matrix.binary_extension }} my_project-${{ matrix.target }}${{ matrix.binary_extension }}
+        run: mv target/${{ matrix.target }}/release/termai${{ matrix.binary_extension }} termai-${{ matrix.target }}${{ matrix.binary_extension }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v2
         with:
-          name: my_project-${{ matrix.target }}
-          path: my_project-${{ matrix.target }}${{ matrix.binary_extension }}
+          name: termai-${{ matrix.target }}
+          path: termai-${{ matrix.target }}${{ matrix.binary_extension }}
 
   release:
     needs: build
@@ -76,6 +77,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./artifacts/my_project-${{ matrix.os }}
-          asset_name: my_project-${{ matrix.os }}
+          asset_path: ./artifacts/termai-${{ matrix.os }}
+          asset_name: termai-${{ matrix.os }}
           asset_content_type: application/octet-stream
