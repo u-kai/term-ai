@@ -421,10 +421,11 @@ pub enum OpenAIModel {
     Gpt40314,
     Gpt4032k,
     Gpt4032k0314,
+    Gpt4o,
 }
 impl Default for OpenAIModel {
     fn default() -> Self {
-        Self::Gpt3Dot5Turbo
+        Self::Gpt4o
     }
 }
 impl serde::Serialize for OpenAIModel {
@@ -440,6 +441,7 @@ impl OpenAIModel {
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Gpt3Dot5Turbo => "gpt-3.5-turbo",
+            Self::Gpt4o => "gpt-4o",
             Self::Gpt4 => "gpt-4",
             Self::Gpt40314 => "gpt-4-0314",
             Self::Gpt4032k => "gpt-4-032k",

@@ -26,17 +26,8 @@ impl Default for CodeReviewer {
     }
 }
 impl GptFunction for CodeReviewer {
-    fn setup_for_action(&mut self, input: &super::UserInput) {
-        self.action = is_file_path(input.content());
-    }
-    fn can_action(&self) -> bool {
-        self.action
-    }
     fn input_to_messages(&self, input: super::UserInput) -> Vec<Message> {
-        if !self.can_action() {
-            return input.to_messages();
-        }
-        let content = get_file_content(input.content()).unwrap();
+        let content = get_file_content(input.content()).unwrap_or(input.content().to_string());
         UserInput::new(content)
             .to_messages()
             .into_iter()
@@ -58,6 +49,21 @@ mod tests {
     };
 
     use super::*;
+
+    #[test]
+    fn messageの入力がfile_path以外であればその内容をコードレビュー依頼に変換する() {
+        let src = "this is not filepath";
+        let prefix = "以下のコードを日本語でレビューしてください";
+        let code_reviewer = CodeReviewer::new(prefix);
+        let input = UserInput::new(src);
+        let messages = code_reviewer.input_to_messages(input);
+
+        assert_eq!(messages.len(), 1);
+        assert_eq!(
+            messages[0],
+            Message::new(Role::User, format!("{}\n{}", prefix, src))
+        );
+    }
     #[test]
     #[ignore]
     fn messageの入力がfile_pathであればcode_reviewerはmessageの内容をコードレビュー依頼に変換する()

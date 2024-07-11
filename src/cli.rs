@@ -25,7 +25,7 @@ pub struct TermAI {
 #[derive(Subcommand)]
 enum SubCommands {
     Chat {
-        #[clap(short = 'v', long = "gpt-version", default_value = "gpt3")]
+        #[clap(short = 'v', long = "gpt-version", default_value = "gpt4o")]
         gpt_version: GptVersion,
         #[clap(short = 'c', long = "code-capture", default_value = "false")]
         code_capture: bool,
@@ -39,18 +39,18 @@ enum SubCommands {
     #[cfg(target_os = "macos")]
     #[clap(name = "tas")]
     TranslateAndSpeak {
-        #[clap(short = 'v', long = "gpt-version", default_value = "gpt3")]
+        #[clap(short = 'v', long = "gpt-version", default_value = "gpt4o")]
         gpt_version: GptVersion,
     },
     #[cfg(target_os = "macos")]
     Speaker {
-        #[clap(short = 'v', long = "gpt-version", default_value = "gpt3")]
+        #[clap(short = 'v', long = "gpt-version", default_value = "gpt4o")]
         gpt_version: GptVersion,
         source: String,
     },
     #[clap(name = "tjp")]
     TranslatorJp {
-        #[clap(short = 'v', long = "gpt-version", default_value = "gpt3")]
+        #[clap(short = 'v', long = "gpt-version", default_value = "gpt4o")]
         gpt_version: GptVersion,
         #[clap(short = 'f', long = "file-source")]
         file_path: Option<String>,
@@ -58,7 +58,7 @@ enum SubCommands {
     },
     #[clap(name = "ten")]
     TranslatorEn {
-        #[clap(short = 'v', long = "gpt-version", default_value = "gpt3")]
+        #[clap(short = 'v', long = "gpt-version", default_value = "gpt4o")]
         gpt_version: GptVersion,
         #[clap(short = 'f', long = "file-source")]
         file_path: Option<String>,
@@ -66,15 +66,18 @@ enum SubCommands {
     },
     #[clap(name = "cc")]
     CodeCapture {
-        #[clap(short = 'v', long = "gpt-version", default_value = "gpt3")]
+        #[clap(short = 'v', long = "gpt-version", default_value = "gpt4o")]
         gpt_version: GptVersion,
         source: String,
     },
     #[clap(name = "cr")]
     CodeReviewer {
-        #[clap(short = 'v', long = "gpt-version", default_value = "gpt3")]
+        #[clap(short = 'v', long = "gpt-version", default_value = "gpt4o")]
         gpt_version: GptVersion,
-        file_path: String,
+        #[clap(short = 'f', long = "file-source")]
+        file_path: Option<String>,
+        #[clap(short = 's', long = "source")]
+        source: Option<String>,
     },
 }
 
@@ -139,6 +142,12 @@ impl TermAI {
                         .unwrap(),
                     GptVersion::Gpt4 => repl
                         .repl_with_input_fn(OpenAIModel::Gpt4, |input| {
+                            say_command(input, &MacSayCommandSpeaker::Karen).unwrap();
+                        })
+                        .unwrap(),
+
+                    GptVersion::Gpt4o => repl
+                        .repl_with_input_fn(OpenAIModel::Gpt4o, |input| {
                             say_command(input, &MacSayCommandSpeaker::Karen).unwrap();
                         })
                         .unwrap(),
@@ -245,6 +254,7 @@ impl TermAI {
             SubCommands::CodeReviewer {
                 gpt_version,
                 file_path,
+                source,
             } => {
                 let mut client = GptClient::from_env().unwrap();
                 let model = if *gpt_version == GptVersion::Gpt3 {
@@ -253,7 +263,11 @@ impl TermAI {
                     OpenAIModel::Gpt4
                 };
                 let mut function = CodeReviewer::default();
-                let input = UserInput::new(file_path);
+                let input = if let Some(file_path) = file_path.as_ref() {
+                    UserInput::new(file_path)
+                } else {
+                    UserInput::new(source.as_ref().expect("source is required"))
+                };
                 exec_with_function(&mut client, model, input, &mut function)
             }
         }
@@ -276,6 +290,7 @@ impl FromStr for TranslateMode {
 pub enum GptVersion {
     Gpt3,
     Gpt4,
+    Gpt4o,
 }
 impl FromStr for GptVersion {
     type Err = String;
@@ -283,6 +298,7 @@ impl FromStr for GptVersion {
         match s {
             "gpt3" | "3" => Ok(Self::Gpt3),
             "gpt4" | "4" => Ok(Self::Gpt4),
+            "gpt4o" | "4o" => Ok(Self::Gpt4o),
             _ => Err(format!("{} is not supported", s)),
         }
     }
