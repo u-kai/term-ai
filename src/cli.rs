@@ -3,6 +3,7 @@ use crate::functions::speaker::MacSpeaker;
 
 #[cfg(target_os = "macos")]
 use crate::functions::speaker::{say_command, MacSayCommandSpeaker};
+use crate::functions::GptDefaultFunction;
 use crate::{
     functions::{
         code_capture::GptCodeCapture,
@@ -24,6 +25,11 @@ pub struct TermAI {
 
 #[derive(Subcommand)]
 enum SubCommands {
+    Ask {
+        #[clap(short = 'v', long = "gpt-version", default_value = "gpt4o")]
+        gpt_version: GptVersion,
+        source: String,
+    },
     Chat {
         #[clap(short = 'v', long = "gpt-version", default_value = "gpt4o")]
         gpt_version: GptVersion,
@@ -152,6 +158,20 @@ impl TermAI {
                         })
                         .unwrap(),
                 };
+            }
+            SubCommands::Ask {
+                gpt_version,
+                source,
+            } => {
+                let mut client = GptClient::from_env().unwrap();
+                let model = match gpt_version {
+                    GptVersion::Gpt3 => OpenAIModel::Gpt3Dot5Turbo,
+                    GptVersion::Gpt4 => OpenAIModel::Gpt4,
+                    GptVersion::Gpt4o => OpenAIModel::Gpt4o,
+                };
+                let input = UserInput::new(source);
+                let mut function = GptDefaultFunction::new();
+                exec_with_function(&mut client, model, input, &mut function)
             }
             SubCommands::Chat {
                 gpt_version,

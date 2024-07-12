@@ -1,22 +1,15 @@
 use crate::gpt::client::Message;
 
-use super::{
-    common::{get_file_content, is_file_path},
-    GptFunction, UserInput,
-};
+use super::{common::get_file_content, GptFunction, UserInput};
 #[derive(Debug, Clone)]
 pub struct CodeReviewer {
     prefix: &'static str,
-    action: bool,
 }
 
 impl CodeReviewer {
     const PREFIX: &'static str = "以下のコードを日本語でレビューしてください";
     pub fn new(prefix: &'static str) -> Self {
-        Self {
-            prefix,
-            action: false,
-        }
+        Self { prefix }
     }
 }
 

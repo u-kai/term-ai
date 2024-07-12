@@ -1,5 +1,4 @@
 use crate::gpt::client::{ChatResponse, HandleResult, Message, Role};
-
 pub mod code_capture;
 pub mod code_reviewer;
 mod common;
@@ -7,6 +6,22 @@ pub mod repl;
 #[cfg(target_os = "macos")]
 pub mod speaker;
 pub mod translator;
+
+pub trait GptFunction {
+    fn input_to_messages(&self, input: UserInput) -> Vec<Message> {
+        input.to_messages()
+    }
+    fn setup_for_action(&mut self, _input: &UserInput) {}
+    fn can_action(&self) -> bool {
+        false
+    }
+    fn handle_stream(&mut self, response: &ChatResponse) -> HandleResult {
+        HandleResult::from(response)
+    }
+    fn action_at_end(&mut self) -> Result<(), Box<dyn std::error::Error + 'static>> {
+        Ok(())
+    }
+}
 
 pub struct GptFunctionContainer {
     functions: Vec<Box<dyn GptFunction>>,
@@ -22,11 +37,13 @@ impl GptFunctionContainer {
         self.functions.push(f);
     }
 }
+
 impl Default for GptFunctionContainer {
     fn default() -> Self {
         Self::new()
     }
 }
+
 impl Default for GptDefaultFunction {
     fn default() -> Self {
         Self::new()
@@ -125,7 +142,12 @@ impl GptDefaultFunction {
         Self {}
     }
 }
-impl GptFunction for GptDefaultFunction {}
+
+impl GptFunction for GptDefaultFunction {
+    fn can_action(&self) -> bool {
+        true
+    }
+}
 
 #[cfg(not(test))]
 const GPT_REQUEST_LIMIT: usize = 4096;
@@ -137,9 +159,11 @@ impl UserInput {
     pub fn new(input: impl Into<String>) -> Self {
         Self(input.into())
     }
+
     pub fn content(&self) -> &str {
         &self.0
     }
+
     pub fn to_messages(self) -> Vec<Message> {
         if self.content().len() <= GPT_REQUEST_LIMIT {
             return vec![Message::new(Role::User, self.content())];
@@ -165,20 +189,5 @@ impl UserInput {
                 acc
             },
         )
-    }
-}
-pub trait GptFunction {
-    fn input_to_messages(&self, input: UserInput) -> Vec<Message> {
-        input.to_messages()
-    }
-    fn setup_for_action(&mut self, _input: &UserInput) {}
-    fn can_action(&self) -> bool {
-        false
-    }
-    fn handle_stream(&mut self, response: &ChatResponse) -> HandleResult {
-        HandleResult::from(response)
-    }
-    fn action_at_end(&mut self) -> Result<(), Box<dyn std::error::Error + 'static>> {
-        Ok(())
     }
 }
